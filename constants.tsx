@@ -1,0 +1,120 @@
+
+import React from 'react';
+import { Professor, Resident, Room, Exam, Promo } from './types';
+import { 
+  Users, 
+  Calendar, 
+  Settings, 
+  BarChart3, 
+  Plus, 
+  Trash2, 
+  Save, 
+  Download, 
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  MapPin,
+  Stethoscope,
+  GraduationCap,
+  Upload,
+  FileSpreadsheet,
+  BookOpen,
+  User,
+  Lock,
+  Eye,
+  EyeOff
+} from 'lucide-react';
+
+export const INITIAL_PROFESSORS: Professor[] = [
+  { id: 'p1', name: 'ELHIJAZI', rank: 'Pr', responsiblePromo: 'FM6MD4', subjects: [], absences: [] },
+  { id: 'p2', name: 'BENNOUR', rank: 'Pr', responsiblePromo: 'FM6MD3', subjects: [], absences: [] },
+  { id: 'p3', name: 'HATIM', rank: 'Pr', responsiblePromo: 'FM6MD5', subjects: [], absences: [] },
+  { id: 'p4', name: 'EL MDAGHRI', rank: 'Pr', responsiblePromo: 'FM6MD1', subjects: [], absences: [] },
+  { id: 'p5', name: 'ROUGGANI', rank: 'Pr', responsiblePromo: 'FM6MD2', subjects: [], absences: [] },
+  { id: 'p6', name: 'BELLAMINE', rank: 'Pr', subjects: [], absences: [] },
+  { id: 'p7', name: 'NAJI', rank: 'Pr', subjects: [], absences: [] },
+  { id: 'p8', name: 'EL OMARI', rank: 'Pr', subjects: [], absences: [] },
+  { id: 'p9', name: 'EL MOUATARIF', rank: 'Pr', subjects: [], absences: [] },
+  { id: 'p10', name: 'CHAFIK', rank: 'Dr', subjects: [], absences: [] },
+  { id: 'p11', name: 'MEJJANID', rank: 'Dr', subjects: [], absences: [] },
+  { id: 'p12', name: 'EL AHRACHE', rank: 'Dr', subjects: [], absences: [] },
+];
+
+export const INITIAL_RESIDENTS: Resident[] = [
+  // R4
+  { id: 'r1', name: 'BALDE', level: 4, specialty: 'Chirurgie', absences: [] },
+  { id: 'r2', name: 'BEAVOGUI', level: 4, specialty: 'Orthodontie', absences: [] },
+  { id: 'r3', name: 'BARRY A', level: 4, specialty: 'Endodontie', absences: [] },
+  { id: 'r4', name: 'DIALLO', level: 4, specialty: 'Prothèse', absences: [] },
+  { id: 'r5', name: 'TONAMOU', level: 4, specialty: 'Parodontie', absences: [] },
+  // R3
+  { id: 'r6', name: 'CAMARA', level: 3, specialty: 'Chirurgie', absences: [] },
+  { id: 'r7', name: 'CHERIF', level: 3, specialty: 'Orthodontie', absences: [] },
+  { id: 'r8', name: 'DRIOUECH', level: 3, specialty: 'Endodontie', absences: [] },
+  { id: 'r9', name: 'FARIH', level: 3, specialty: 'Prothèse', absences: [] },
+  { id: 'r10', name: 'IDRISSI', level: 3, specialty: 'Parodontie', absences: [] },
+  { id: 'r11', name: 'KEITA', level: 3, specialty: 'Pédodontie', absences: [] },
+  { id: 'r12', name: 'LAHLOU', level: 3, specialty: 'Santé Publique', absences: [] },
+  { id: 'r13', name: 'SABOUR', level: 3, specialty: 'Dentisterie', absences: [] },
+  { id: 'r14', name: 'OUAKIB', level: 3, specialty: 'Chirurgie', absences: [] },
+  // R2
+  { id: 'r15', name: 'BARRY O', level: 2, specialty: 'Orthodontie', absences: [] },
+  { id: 'r16', name: 'CATRAYE', level: 2, specialty: 'Endodontie', absences: [] },
+  { id: 'r17', name: 'DIAWARA', level: 2, specialty: 'Prothèse', absences: [] },
+  { id: 'r18', name: 'DOUMBOUYA', level: 2, specialty: 'Parodontie', absences: [] },
+  { id: 'r19', name: 'ELHAIBA', level: 2, specialty: 'Pédodontie', absences: [] },
+  { id: 'r20', name: 'ELMOKADDEM', level: 2, specialty: 'Santé Publique', absences: [] },
+  { id: 'r21', name: 'FAID', level: 2, specialty: 'Chirurgie', absences: [] },
+  { id: 'r22', name: 'HAMDANE', level: 2, specialty: 'Orthodontie', absences: [] },
+  { id: 'r23', name: 'HDIDI', level: 2, specialty: 'Endodontie', absences: [] },
+  { id: 'r24', name: 'MEZIANI', level: 2, specialty: 'Prothèse', absences: [] },
+  { id: 'r25', name: 'SABILI', level: 2, specialty: 'Parodontie', absences: [] },
+  // R1
+  { id: 'r26', name: 'ALAMI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r27', name: 'AMOUSSO', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r28', name: 'ANDRIAMANAMPISOA', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r29', name: 'BAZI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r30', name: 'BOUMEHDI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r31', name: 'EL BENNA', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r32', name: 'GHAZI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r33', name: 'HANTANIRINA', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r34', name: 'JERMOUMI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r35', name: 'KHOUZAIMI', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r36', name: 'LAALJ', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r37', name: 'MAHBOUB', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r38', name: 'MILLIMOUNO', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r39', name: 'MOUDAHIK', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r40', name: 'MOUHTAJ', level: 1, specialty: 'Dentisterie', absences: [] },
+  { id: 'r41', name: 'RAVONIARIJAONA', level: 1, specialty: 'Dentisterie', absences: [] },
+];
+
+export const INITIAL_ROOMS: Room[] = [
+  { id: 'room1', name: 'Omnisport', profCapacity: 2, residentCapacity: 6 },
+  { id: 'room2', name: 'Amphi 1', profCapacity: 2, residentCapacity: 3 },
+  { id: 'room3', name: 'Amphi 2', profCapacity: 2, residentCapacity: 3 },
+  { id: 'room4', name: 'Bb01', profCapacity: 1, residentCapacity: 1 },
+  { id: 'room5', name: 'Conférence', profCapacity: 2, residentCapacity: 3 },
+];
+
+export const INITIAL_EXAMS: Exam[] = [
+  { id: 'e1', date: '2025-01-02', time: '09:00', duration: 120, promo: 'FM6MD4', subject: 'Session Normale M4', roomIds: ['room1', 'room2', 'room4'] },
+  { id: 'e2', date: '2025-01-02', time: '12:00', duration: 120, promo: 'FM6MD5', subject: 'Session Normale M5', roomIds: ['room1', 'room2', 'room4'] },
+  { id: 'e3', date: '2025-01-02', time: '15:00', duration: 120, promo: 'FM6MD1', subject: 'Session Normale M1', roomIds: ['room1', 'room2', 'room3', 'room5'] },
+];
+
+export const ICONS = {
+  Users, Calendar, Settings, BarChart3, Plus, Trash2, Save, Download, Sparkles,
+  CheckCircle2, AlertCircle, Clock, MapPin, Stethoscope, GraduationCap, Upload,
+  FileSpreadsheet, BookOpen, User, Lock, Eye, EyeOff
+};
+
+export const PROMOS: Promo[] = ['FM6MD1', 'FM6MD2', 'FM6MD3', 'FM6MD4', 'FM6MD5'];
+
+export const PROMO_COLORS: Record<Promo, string> = {
+  'FM6MD1': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  'FM6MD2': 'bg-blue-100 text-blue-800 border-blue-200',
+  'FM6MD3': 'bg-green-100 text-green-800 border-green-200',
+  'FM6MD4': 'bg-rose-100 text-rose-800 border-rose-200',
+  'FM6MD5': 'bg-purple-100 text-purple-800 border-purple-200',
+};

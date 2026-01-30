@@ -1,0 +1,5 @@
+{
+  "name": "DentProctor - Exam Surveillance System",
+  "description": "A comprehensive exam proctoring management system for Dental Faculties, featuring smart scheduling, equity tracking, and constraint-based assignment logic.",
+  "requestFramePermissions": []
+}
