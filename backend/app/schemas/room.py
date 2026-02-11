@@ -7,7 +7,7 @@ class RoomBase(BaseModel):
     resident_capacity: int
 
 class RoomCreate(RoomBase):
-    pass
+    id: Optional[str] = None  # Permettre de spécifier un ID personnalisé
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = None

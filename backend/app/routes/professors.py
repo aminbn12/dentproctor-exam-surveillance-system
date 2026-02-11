@@ -22,6 +22,15 @@ async def create_professor(
     current_user: User = Depends(get_admin_user)
 ):
     """Créer un professeur (admin only)"""
+    # Vérifier si un professeur avec cet ID existe déjà
+    if prof.id:
+        existing = db.query(Professor).filter(Professor.id == prof.id).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Un professeur avec l'ID '{prof.id}' existe déjà"
+            )
+    
     new_prof = Professor(**prof.dict())
     db.add(new_prof)
     db.commit()

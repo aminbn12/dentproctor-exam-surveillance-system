@@ -7,7 +7,7 @@ class ResidentBase(BaseModel):
     specialty: str
 
 class ResidentCreate(ResidentBase):
-    pass
+    id: Optional[str] = None  # Permettre de spécifier un ID personnalisé
 
 class ResidentUpdate(BaseModel):
     name: Optional[str] = None

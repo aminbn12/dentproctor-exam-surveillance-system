@@ -1,10 +1,10 @@
 // Adaptateurs pour convertir les données API backend au format frontend
-import { Professor, Resident, Room, Exam, Assignment } from './types';
+import { Professor, Resident, Room, Exam, Assignment } from "./types";
 
 export interface BackendProfessor {
   id: string;
   name: string;
-  rank: 'Pr' | 'Dr';
+  rank: "Pr" | "Dr";
   responsible_promo?: string;
   user_id: string;
 }
@@ -46,7 +46,9 @@ export const adaptProfessor = (backend: BackendProfessor): Professor => ({
   id: backend.id,
   name: backend.name,
   rank: backend.rank,
-  responsiblePromo: backend.responsible_promo || '',
+  responsiblePromo: backend.responsible_promo || "",
+  subjects: [],
+  absences: [],
 });
 
 // Convertir les résidents du backend au format frontend
@@ -55,13 +57,15 @@ export const adaptResident = (backend: BackendResident): Resident => ({
   name: backend.name,
   level: backend.level,
   specialty: backend.specialty,
+  absences: [],
 });
 
 // Convertir les salles du backend au format frontend
 export const adaptRoom = (backend: BackendRoom): Room => ({
   id: backend.id,
   name: backend.name,
-  capacity: backend.prof_capacity + backend.resident_capacity,
+  profCapacity: backend.prof_capacity,
+  residentCapacity: backend.resident_capacity,
 });
 
 // Convertir les examens du backend au format frontend
@@ -72,17 +76,18 @@ export const adaptExam = (backend: BackendExam): Exam => ({
   duration: backend.duration,
   promo: backend.promo,
   subject: backend.subject,
+  roomIds: [],
 });
 
 // Convertir les assignments du backend au format frontend
 export const adaptAssignment = (
   backend: BackendAssignment,
-  rooms: Map<string, Room>
+  rooms: Map<string, Room>,
 ): Assignment => ({
   id: backend.id,
   examId: backend.exam_id,
   roomId: backend.room_id,
   room: rooms.get(backend.room_id),
-  profIds: backend.professors.map(p => p.id),
-  residentIds: backend.residents.map(r => r.id),
+  profIds: backend.professors.map((p) => p.id),
+  residentIds: backend.residents.map((r) => r.id),
 });

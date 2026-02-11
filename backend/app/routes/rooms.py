@@ -21,6 +21,15 @@ async def create_room(
     current_user: User = Depends(get_admin_user)
 ):
     """Créer une salle"""
+    # Vérifier si une salle avec cet ID existe déjà
+    if room.id:
+        existing_id = db.query(Room).filter(Room.id == room.id).first()
+        if existing_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Une salle avec l'ID '{room.id}' existe déjà"
+            )
+    
     # Vérifier unicité du nom
     existing = db.query(Room).filter(Room.name == room.name).first()
     if existing:

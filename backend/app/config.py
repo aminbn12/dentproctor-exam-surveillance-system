@@ -2,14 +2,17 @@ import os
 from pydantic_settings import BaseSettings
 from typing import List
 
+# Déterminer le chemin absolu du dossier backend
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "DentProctor API"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = ENVIRONMENT == "development"
     
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./dentproctor.db")
+    # Database - utiliser un chemin absolu pour la persistance
+    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(BACKEND_DIR, 'dentproctor.db')}")
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")

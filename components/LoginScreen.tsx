@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { ICONS } from '../constants';
-import { UserSession } from '../types';
-import { syncWithBackend, setAuthToken } from '../utils/apiIntegration';
-import { AuthResponse } from '../types/api';
+import React, { useState, useEffect } from "react";
+import { ICONS } from "../constants";
+import { UserSession } from "../types";
+import { syncWithBackend, setAuthToken } from "../utils/apiIntegration";
+import { AuthResponse } from "../types/api";
 
 interface LoginScreenProps {
   onLogin: (user: UserSession) => void;
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,16 +31,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const apiUrl = '/api';
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || 'Identifiants incorrects');
+        throw new Error(data.detail || "Identifiants incorrects");
       }
 
       const data: AuthResponse = await response.json();
@@ -52,11 +52,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       onLogin({
         id: data.user.id,
         name: data.user.full_name || data.user.username,
-        role: data.user.role as 'ADMIN' | 'PROCTOR',
-        type: data.user.staff_type as 'prof' | 'resident',
+        role: data.user.role as "ADMIN" | "PROCTOR",
+        type: data.user.staff_type as "prof" | "resident",
       });
     } catch (err: any) {
-      setError(err.message || 'Erreur de connexion au serveur Python.');
+      setError(err.message || "Erreur de connexion au serveur Python.");
     } finally {
       setIsLoading(false);
     }
@@ -74,9 +74,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           <div className="inline-flex p-4 bg-indigo-50 rounded-3xl text-indigo-600 mb-6">
             <ICONS.GraduationCap className="w-12 h-12" />
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase mb-2">DentProctor</h1>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase mb-2">
+            DentProctor
+          </h1>
           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">
-            {isBackendAvailable ? '✅ Backend Python Actif' : '⚠️ Mode Hors-Ligne'}
+            {isBackendAvailable
+              ? "✅ Backend Python Actif"
+              : "⚠️ Mode Hors-Ligne"}
           </p>
         </div>
 
@@ -92,12 +96,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           {error && (
             <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
               <ICONS.AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-              <p className="text-[11px] font-bold text-red-700 leading-tight">{error}</p>
+              <p className="text-[11px] font-bold text-red-700 leading-tight">
+                {error}
+              </p>
             </div>
           )}
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identifiant</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              Identifiant
+            </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <ICONS.User className="w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
@@ -114,7 +122,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mot de passe</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              Mot de passe
+            </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <ICONS.Lock className="w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
@@ -132,7 +142,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-300 hover:text-indigo-500 transition-colors"
               >
-                {showPassword ? <ICONS.EyeOff className="w-4 h-4" /> : <ICONS.Eye className="w-4 h-4" />}
+                {showPassword ? (
+                  <ICONS.EyeOff className="w-4 h-4" />
+                ) : (
+                  <ICONS.Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
@@ -148,13 +162,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                 Connexion...
               </>
             ) : (
-              '🔓 Se connecter'
+              "🔓 Se connecter"
             )}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-slate-200">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📝 Identifiants de Test:</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+            📝 Identifiants de Test:
+          </p>
           <div className="space-y-2 text-[10px]">
             <div className="bg-slate-50 rounded-xl p-3">
               <p className="font-bold text-slate-700">Admin:</p>

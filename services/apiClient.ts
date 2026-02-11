@@ -1,6 +1,6 @@
 // Service API pour communiquer avec le backend DentProctor
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -33,12 +33,12 @@ class ApiClient {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-
+    
     const token = this.getToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-
+    
     return headers;
   }
 
@@ -48,7 +48,7 @@ class ApiClient {
     body?: any
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
-
+    
     try {
       const response = await fetch(url, {
         method,

@@ -1,18 +1,17 @@
-
-export type Promo = 'FM6MD1' | 'FM6MD2' | 'FM6MD3' | 'FM6MD4' | 'FM6MD5';
-export type UserRole = 'ADMIN' | 'PROCTOR';
+export type Promo = "FM6MD1" | "FM6MD2" | "FM6MD3" | "FM6MD4" | "FM6MD5";
+export type UserRole = "ADMIN" | "PROCTOR";
 
 export interface UserSession {
   id: string;
   name: string;
   role: UserRole;
-  type?: 'prof' | 'resident';
+  type?: "prof" | "resident";
 }
 
 export interface Professor {
   id: string;
   name: string;
-  rank: 'Pr' | 'Dr';
+  rank: "Pr" | "Dr";
   responsiblePromo?: Promo;
   subjects: string[];
   absences: string[];
@@ -44,10 +43,11 @@ export interface Exam {
 }
 
 export interface Assignment {
+  id?: string; // ID du backend pour les opérations CRUD
   examId: string;
   roomId: string;
   profIds: string[];
   residentIds: string[];
 }
 
-export type AppTab = 'config' | 'planning' | 'stats' | 'my-planning';
+export type AppTab = "config" | "planning" | "stats" | "my-planning";

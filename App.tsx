@@ -84,40 +84,52 @@ const App: React.FC = () => {
     try {
       const headers = getFetchHeaders();
       
-      // Charger les professeurs
+      // Charger les professeurs - ne remplacer que si le backend a des données
       const profsRes = await fetch(`${apiUrl}/professors`, { headers });
       if (profsRes.ok) {
         const backendProfs: BackendProfessor[] = await profsRes.json();
-        setProfs(backendProfs.map(adaptProfessor));
+        // Ne remplacer les données locales que si le backend a des données
+        if (backendProfs && backendProfs.length > 0) {
+          setProfs(backendProfs.map(adaptProfessor));
+        }
       }
       
-      // Charger les résidents
+      // Charger les résidents - ne remplacer que si le backend a des données
       const residentsRes = await fetch(`${apiUrl}/residents`, { headers });
       if (residentsRes.ok) {
         const backendResidents: BackendResident[] = await residentsRes.json();
-        setResidents(backendResidents.map(adaptResident));
+        // Ne remplacer les données locales que si le backend a des données
+        if (backendResidents && backendResidents.length > 0) {
+          setResidents(backendResidents.map(adaptResident));
+        }
       }
       
-      // Charger les salles
+      // Charger les salles - ne remplacer que si le backend a des données
       const roomsRes = await fetch(`${apiUrl}/rooms`, { headers });
       if (roomsRes.ok) {
         const backendRooms: BackendRoom[] = await roomsRes.json();
-        setRooms(backendRooms.map(adaptRoom));
+        if (backendRooms && backendRooms.length > 0) {
+          setRooms(backendRooms.map(adaptRoom));
+        }
       }
       
-      // Charger les examens
+      // Charger les examens - ne remplacer que si le backend a des données
       const examsRes = await fetch(`${apiUrl}/exams`, { headers });
       if (examsRes.ok) {
         const backendExams: BackendExam[] = await examsRes.json();
-        setExams(backendExams.map(adaptExam));
+        if (backendExams && backendExams.length > 0) {
+          setExams(backendExams.map(adaptExam));
+        }
       }
       
-      // Charger les assignments
+      // Charger les assignments - ne remplacer que si le backend a des données
       const assignmentsRes = await fetch(`${apiUrl}/assignments`, { headers });
       if (assignmentsRes.ok) {
         const backendAssignments: BackendAssignment[] = await assignmentsRes.json();
-        const roomsMap = new Map(setRooms.map((r: any) => [r.id, r]));
-        setAssignments(backendAssignments.map(a => adaptAssignment(a, roomsMap)));
+        if (backendAssignments && backendAssignments.length > 0) {
+          const roomsMap = new Map<string, Room>(rooms.map((r: Room) => [r.id, r]));
+          setAssignments(backendAssignments.map(a => adaptAssignment(a, roomsMap)));
+        }
       }
     } catch (error) {
       console.warn('Erreur lors du chargement des données du backend:', error);

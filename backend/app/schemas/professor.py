@@ -7,7 +7,7 @@ class ProfessorBase(BaseModel):
     responsible_promo: Optional[str] = None
 
 class ProfessorCreate(ProfessorBase):
-    pass
+    id: Optional[str] = None  # Permettre de spécifier un ID personnalisé
 
 class ProfessorUpdate(BaseModel):
     name: Optional[str] = None

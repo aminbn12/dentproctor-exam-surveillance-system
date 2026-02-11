@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -22,6 +22,15 @@ async def create_resident(
     current_user: User = Depends(get_admin_user)
 ):
     """Créer un résident"""
+    # Vérifier si un résident avec cet ID existe déjà
+    if resident.id:
+        existing = db.query(Resident).filter(Resident.id == resident.id).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Un résident avec l'ID '{resident.id}' existe déjà"
+            )
+    
     new_resident = Resident(**resident.dict())
     db.add(new_resident)
     db.commit()
