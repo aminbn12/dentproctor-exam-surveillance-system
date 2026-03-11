@@ -58,7 +58,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
   // Synchroniser les données locales vers le backend
   const syncLocalDataToBackend = async () => {
-    if (!confirm("🔄 Synchroniser toutes les données locales vers le serveur ?\n\nCela enverra vos enseignants, résidents, salles et examens vers la base de données.")) {
+    if (
+      !confirm(
+        "🔄 Synchroniser toutes les données locales vers le serveur ?\n\nCela enverra vos enseignants, résidents, salles et examens vers la base de données.",
+      )
+    ) {
       return;
     }
 
@@ -84,7 +88,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           });
           successCount++;
         } catch (err: any) {
-          if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+          if (
+            err.message?.includes("409") ||
+            err.message?.includes("existe déjà")
+          ) {
             try {
               await updateProfessorApi(prof.id, {
                 name: prof.name,
@@ -114,7 +121,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           });
           successCount++;
         } catch (err: any) {
-          if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+          if (
+            err.message?.includes("409") ||
+            err.message?.includes("existe déjà")
+          ) {
             try {
               await updateResidentApi(resident.id, {
                 name: resident.name,
@@ -144,7 +154,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           });
           successCount++;
         } catch (err: any) {
-          if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+          if (
+            err.message?.includes("409") ||
+            err.message?.includes("existe déjà")
+          ) {
             try {
               await updateRoomApi(room.id, {
                 name: room.name,
@@ -165,9 +178,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
       // Afficher le résultat
       if (errorCount === 0) {
-        alert(`✅ Synchronisation réussie !\n\n📝 ${successCount} éléments synchronisés avec le serveur.`);
+        alert(
+          `✅ Synchronisation réussie !\n\n📝 ${successCount} éléments synchronisés avec le serveur.`,
+        );
       } else {
-        alert(`⚠️ Synchronisation partielle\n\n✅ ${successCount} succès\n❌ ${errorCount} erreurs\n\nVos données restent sauvegardées localement.`);
+        alert(
+          `⚠️ Synchronisation partielle\n\n✅ ${successCount} succès\n❌ ${errorCount} erreurs\n\nVos données restent sauvegardées localement.`,
+        );
         console.error("Erreurs de synchronisation:", errors);
       }
     } catch (error) {
@@ -180,20 +197,20 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     if (!file) return;
     try {
       const data = await importFromJSON(file);
-      
+
       // Mettre à jour le state local d'abord
       if (data.profs) setProfs(data.profs);
       if (data.residents) setResidents(data.residents);
       if (data.rooms) setRooms(data.rooms);
       if (data.exams) setExams(data.exams);
-      
+
       // Synchroniser avec le backend si disponible
       const backend = await syncWithBackend();
       if (backend?.isBackendAvailable) {
         try {
           let successCount = 0;
           let errorCount = 0;
-          
+
           // Synchroniser les professeurs
           if (data.profs && data.profs.length > 0) {
             for (const prof of data.profs) {
@@ -207,7 +224,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 successCount++;
               } catch (err: any) {
                 // Si le prof existe déjà (409), on tente une mise à jour
-                if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+                if (
+                  err.message?.includes("409") ||
+                  err.message?.includes("existe déjà")
+                ) {
                   try {
                     await updateProfessorApi(prof.id, {
                       name: prof.name,
@@ -224,7 +244,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               }
             }
           }
-          
+
           // Synchroniser les résidents
           if (data.residents && data.residents.length > 0) {
             for (const resident of data.residents) {
@@ -238,7 +258,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 successCount++;
               } catch (err: any) {
                 // Si le résident existe déjà, on tente une mise à jour
-                if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+                if (
+                  err.message?.includes("409") ||
+                  err.message?.includes("existe déjà")
+                ) {
                   try {
                     await updateResidentApi(resident.id, {
                       name: resident.name,
@@ -255,7 +278,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               }
             }
           }
-          
+
           // Synchroniser les salles
           if (data.rooms && data.rooms.length > 0) {
             for (const room of data.rooms) {
@@ -268,7 +291,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 });
                 successCount++;
               } catch (err: any) {
-                if (err.message?.includes("409") || err.message?.includes("existe déjà")) {
+                if (
+                  err.message?.includes("409") ||
+                  err.message?.includes("existe déjà")
+                ) {
                   try {
                     await updateRoomApi(room.id, {
                       name: room.name,
@@ -285,17 +311,25 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               }
             }
           }
-          
+
           if (errorCount > 0) {
-            alert(`✅ Import local réussi !\n🔄 ${successCount} éléments synchronisés avec le serveur\n⚠️ ${errorCount} erreurs de synchronisation`);
+            alert(
+              `✅ Import local réussi !\n🔄 ${successCount} éléments synchronisés avec le serveur\n⚠️ ${errorCount} erreurs de synchronisation`,
+            );
           } else {
-            alert(`✅ Données importées et synchronisées avec succès !\n🔄 ${successCount} éléments enregistrés dans la base de données`);
+            alert(
+              `✅ Données importées et synchronisées avec succès !\n🔄 ${successCount} éléments enregistrés dans la base de données`,
+            );
           }
         } catch (syncError) {
-          alert("✅ Données importées localement\n⚠️ Erreur de synchronisation avec le serveur - les données sont sauvegardées dans le navigateur");
+          alert(
+            "✅ Données importées localement\n⚠️ Erreur de synchronisation avec le serveur - les données sont sauvegardées dans le navigateur",
+          );
         }
       } else {
-        alert("✅ Données importées avec succès !\n⚠️ Serveur indisponible - les données seront synchronisées lors de la prochaine connexion");
+        alert(
+          "✅ Données importées avec succès !\n⚠️ Serveur indisponible - les données seront synchronisées lors de la prochaine connexion",
+        );
       }
     } catch (error) {
       alert(`❌ Erreur: ${error}`);
@@ -331,6 +365,43 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         }
       })();
     }
+  };
+
+  const duplicateExam = (exam: Exam) => {
+    // Create a duplicate of the exam with a new ID
+    const duplicatedExam: Partial<Exam> = {
+      date: exam.date,
+      time: exam.time,
+      duration: exam.duration,
+      promo: exam.promo,
+      subject: exam.subject + " (copie)",
+      roomIds: exam.roomIds || [],
+    };
+
+    (async () => {
+      try {
+        const backend = await syncWithBackend();
+        if (backend?.isBackendAvailable) {
+          const created = await createExamApi(duplicatedExam);
+          setExams([...exams, adaptExam(created)]);
+        } else {
+          // Fallback: create locally with generated ID
+          const newExam: Exam = {
+            ...duplicatedExam,
+            id: `exam_${Date.now()}`,
+          } as Exam;
+          setExams([...exams, newExam]);
+        }
+      } catch (err) {
+        console.warn("Création copie exam échouée", err);
+        // Fallback: create locally
+        const newExam: Exam = {
+          ...duplicatedExam,
+          id: `exam_${Date.now()}`,
+        } as Exam;
+        setExams([...exams, newExam]);
+      }
+    })();
   };
 
   const updateProf = (id: string, field: keyof Professor, value: any) => {
@@ -1286,6 +1357,27 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                               exams,
                               setExams,
                               `Épreuve ${e.subject}`,
+                            )
+                          }
+                          className="text-slate-300 hover:text-red-500 p-1"
+                        >
+                          <button
+                            onClick={(evt) => {
+                              evt.stopPropagation();
+                              duplicateExam(e);
+                            }}
+                            className="text-slate-300 hover:text-indigo-500 p-1"
+                          >
+                            <ICONS.Copy className="w-4 h-4" />
+                          </button>
+                        </button>
+                        <button
+                          onClick={() =>
+                            deleteItem(
+                              e.id,
+                              exams,
+                              setExams,
+                              `Exam ${e.subject}`,
                             )
                           }
                           className="text-slate-300 hover:text-red-500 p-1"
