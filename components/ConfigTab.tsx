@@ -1330,9 +1330,31 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
                               Durée
                             </label>
-                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                              {Math.floor(e.duration / 60)}h{e.duration % 60}m
-                            </span>
+                            <div className="flex items-center bg-indigo-50 border border-indigo-100 rounded overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newDuration = Math.max(5, e.duration - 5);
+                                  updateExam(e.id, "duration", newDuration);
+                                }}
+                                className="px-1.5 py-0.5 text-[10px] font-black text-indigo-600 hover:bg-indigo-100 transition-colors"
+                              >
+                                −
+                              </button>
+                              <span className="text-[10px] font-black text-indigo-700 px-1 min-w-[45px] text-center">
+                                {Math.floor(e.duration / 60)}h{e.duration % 60}m
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newDuration = e.duration + 5;
+                                  updateExam(e.id, "duration", newDuration);
+                                }}
+                                className="px-1.5 py-0.5 text-[10px] font-black text-indigo-600 hover:bg-indigo-100 transition-colors"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </td>
