@@ -23,7 +23,23 @@ export const isStaffAvailable = (
   allExams: Exam[],
   assignments: Assignment[]
 ): boolean => {
-  if (staff.absences.includes(targetExam.date)) return false;
+  // Vérifier les absences (journée complète ou plage horaire)
+  for (const absence of staff.absences) {
+    if (absence.date !== targetExam.date) continue;
+
+    // Journée complète
+    if (!absence.startTime || !absence.endTime) return false;
+
+    // Absence partielle : vérifier le chevauchement avec l'examen
+    if (targetExam.time) {
+      const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+      const examStart = toMin(targetExam.time);
+      const examEnd = examStart + targetExam.duration;
+      const absStart = toMin(absence.startTime);
+      const absEnd = toMin(absence.endTime);
+      if (examStart < absEnd && examEnd > absStart) return false;
+    }
+  }
   if (!targetExam.time) return true;
 
   const [targetH, targetM] = targetExam.time.split(':').map(Number);

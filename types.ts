@@ -8,13 +8,24 @@ export interface UserSession {
   type?: "prof" | "resident";
 }
 
+/**
+ * Représente une période d'indisponibilité.
+ * - Si startTime et endTime sont définis, c'est une indisponibilité horaire sur un seul jour.
+ * - Sinon, c'est une journée entière d'indisponibilité.
+ */
+export interface Absence {
+  date: string;        // format YYYY-MM-DD
+  startTime?: string;  // format HH:MM (optionnel, pour une plage horaire)
+  endTime?: string;    // format HH:MM (optionnel, pour une plage horaire)
+}
+
 export interface Professor {
   id: string;
   name: string;
   rank: "Pr" | "Dr";
   responsiblePromo?: Promo;
   subjects: string[];
-  absences: string[];
+  absences: Absence[];
 }
 
 export interface Resident {
@@ -22,7 +33,7 @@ export interface Resident {
   name: string;
   level: 1 | 2 | 3 | 4;
   specialty: string;
-  absences: string[];
+  absences: Absence[];
 }
 
 export interface Room {
@@ -50,4 +61,12 @@ export interface Assignment {
   residentIds: string[];
 }
 
-export type AppTab = "config" | "planning" | "stats" | "my-planning";
+export interface HistoryRecord {
+  id: number;
+  date_saved: string;
+  period_name: string;
+  exams_snapshot: Exam[];
+  assignments_snapshot: Assignment[];
+}
+
+export type AppTab = "config" | "planning" | "stats" | "my-planning" | "history";

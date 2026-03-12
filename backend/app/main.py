@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 import os
 from app.config import settings
 from app.database import create_tables, get_db
-from app.routes import auth, professors, residents, rooms, exams, assignments
+from app.routes import auth, professors, residents, rooms, exams, assignments, history
 
 # Créer les tables au démarrage
 create_tables()
@@ -51,6 +51,7 @@ app.include_router(residents.router)
 app.include_router(rooms.router)
 app.include_router(exams.router)
 app.include_router(assignments.router)
+app.include_router(history.router)
 
 # Gestionnaire d'erreurs globaux
 @app.exception_handler(Exception)

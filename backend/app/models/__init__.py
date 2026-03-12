@@ -7,5 +7,6 @@ from app.models.room import Room
 from app.models.exam import Exam
 from app.models.assignment import Assignment
 from app.models.absence import Absence
+from app.models.history_record import HistoryRecord
 
-__all__ = ['Base', 'User', 'Professor', 'Resident', 'Room', 'Exam', 'Assignment', 'Absence']
+__all__ = ['Base', 'User', 'Professor', 'Resident', 'Room', 'Exam', 'Assignment', 'Absence', 'HistoryRecord']

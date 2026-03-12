@@ -12,6 +12,7 @@ import {
 } from './constants';
 import ConfigTab from './components/ConfigTab';
 import PlanningTab from './components/PlanningTab';
+import HistoryTab from './components/HistoryTab';
 import StatsTab from './components/StatsTab';
 import ProctorView from './components/ProctorView';
 import LoginScreen from './components/LoginScreen';
@@ -176,6 +177,7 @@ const App: React.FC = () => {
               <>
                 <button onClick={() => setActiveTab('config')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'config' ? 'bg-white text-indigo-700 shadow-sm' : 'hover:bg-indigo-600/50 text-indigo-100'}`}>Configuration</button>
                 <button onClick={() => setActiveTab('planning')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'planning' ? 'bg-white text-indigo-700 shadow-sm' : 'hover:bg-indigo-600/50 text-indigo-100'}`}>Planning Global</button>
+                <button onClick={() => setActiveTab('history')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'history' ? 'bg-white text-indigo-700 shadow-sm' : 'hover:bg-indigo-600/50 text-indigo-100'}`}>Historique</button>
                 <button onClick={() => setActiveTab('stats')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'stats' ? 'bg-white text-indigo-700 shadow-sm' : 'hover:bg-indigo-600/50 text-indigo-100'}`}>Équité</button>
               </>
             ) : (
@@ -193,9 +195,12 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-6">
+      <main className={`flex-1 mx-auto w-full p-6 transition-all duration-300 ${
+        activeTab === 'planning' ? 'max-w-[98%]' : 'max-w-7xl'
+      }`}>
         {activeTab === 'config' && <ConfigTab profs={profs} setProfs={setProfs} residents={residents} setResidents={setResidents} rooms={rooms} setRooms={setRooms} exams={exams} setExams={setExams} />}
         {activeTab === 'planning' && <PlanningTab profs={profs} residents={residents} rooms={rooms} exams={exams} assignments={assignments} setAssignments={setAssignments} />}
+        {activeTab === 'history' && <HistoryTab />}
         {activeTab === 'stats' && <StatsTab profs={profs} residents={residents} assignments={assignments} />}
         {activeTab === 'my-planning' && <ProctorView user={user} exams={exams} assignments={assignments} rooms={rooms} profs={profs} residents={residents} />}
       </main>

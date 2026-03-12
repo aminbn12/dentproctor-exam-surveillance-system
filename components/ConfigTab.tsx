@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo } from "react";
+import { Absence } from "../types";
 import { Professor, Resident, Room, Exam, Promo } from "../types";
 import { ICONS, PROMOS, PROMO_COLORS } from "../constants";
 import { exportToJSON, importFromJSON } from "../utils/storage";
@@ -49,8 +50,19 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     "profs" | "residents" | "rooms" | "exams"
   >("profs");
   const [editingAbsenceId, setEditingAbsenceId] = useState<string | null>(null);
+  const [absenceIsPartial, setAbsenceIsPartial] = useState(false);
+  const [absenceStartTime, setAbsenceStartTime] = useState("");
+  const [absenceEndTime, setAbsenceEndTime] = useState("");
+  const [absenceDateInput, setAbsenceDateInput] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importJsonRef = useRef<HTMLInputElement>(null);
+
+  // Vider la sélection quand on change d'onglet
+  const handleTabChange = (newTab: "profs" | "residents" | "rooms" | "exams") => {
+    setSubTab(newTab);
+    setSelectedIds([]);
+  };
 
   const handleExport = () => {
     exportToJSON(profs, residents, rooms, exams, []);
@@ -362,9 +374,44 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           console.warn("Suppression backend échouée, suppression locale", err);
         } finally {
           setter(list.filter((item) => item.id !== id));
+          setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id)); // Retirer de la sélection s'il y était
         }
       })();
     }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    const typeLabel = subTab === "profs" ? "enseignants" : "résidents";
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer les ${selectedIds.length} ${typeLabel} sélectionné(s) ?`)) {
+      (async () => {
+        try {
+          const backend = await syncWithBackend();
+          if (backend?.isBackendAvailable) {
+            // Supprimer via API un par un
+            for (const id of selectedIds) {
+              if (subTab === "profs") await deleteProfessorApi(id);
+              else if (subTab === "residents") await deleteResidentApi(id);
+            }
+          }
+        } catch (err) {
+          console.warn("Suppression en masse backend a échoué (partiellement ou totalement).", err);
+        } finally {
+          // Mise à jour locale
+          if (subTab === "profs") {
+            setProfs(profs.filter((p) => !selectedIds.includes(p.id)));
+          } else if (subTab === "residents") {
+            setResidents(residents.filter((r) => !selectedIds.includes(r.id)));
+          }
+          setSelectedIds([]);
+        }
+      })();
+    }
+  };
+
+  const toggleSelection = (id: string, isChecked: boolean) => {
+    if (isChecked) setSelectedIds([...selectedIds, id]);
+    else setSelectedIds(selectedIds.filter((selId) => selId !== id));
   };
 
   const duplicateExam = (exam: Exam) => {
@@ -523,7 +570,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const lines = content.split(/\r?\n/);
-      const newItems: any[] = [];
+      
+      const updatedProfs = [...profs];
+      const updatedResidents = [...residents];
+      let addedCount = 0;
+      let updatedCount = 0;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -542,38 +593,65 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         if (subTab === "profs") {
           const [name, rank, promo, ...subjects] = columns;
           if (name) {
-            newItems.push({
-              id: `prof-${Date.now()}-${i}`,
-              name,
-              rank: rank === "Pr" || rank === "Dr" ? rank : "Dr",
-              subjects: subjects.filter((s) => s && s.trim() !== ""),
-              responsiblePromo: PROMOS.includes(promo as any)
-                ? promo
-                : undefined,
-              absences: [],
-            });
+            const cleanRank = rank?.toUpperCase() === "PR" ? "Pr" : "Dr";
+            const existingProf = updatedProfs.find(
+              (p) => p.name.toLowerCase() === name.toLowerCase()
+            );
+
+            if (existingProf) {
+              existingProf.rank = cleanRank;
+              existingProf.subjects = subjects.filter((s) => s && s.trim() !== "");
+              existingProf.responsiblePromo = PROMOS.includes(promo as any)
+                ? promo as Promo
+                : undefined;
+              updatedCount++;
+            } else {
+              updatedProfs.push({
+                id: `prof-${Date.now()}-${i}`,
+                name,
+                rank: cleanRank,
+                subjects: subjects.filter((s) => s && s.trim() !== ""),
+                responsiblePromo: PROMOS.includes(promo as any)
+                  ? promo as Promo
+                  : undefined,
+                absences: [],
+              });
+              addedCount++;
+            }
           }
         } else if (subTab === "residents") {
           const [name, level, specialty] = columns;
           if (name) {
-            newItems.push({
-              id: `res-${Date.now()}-${i}`,
-              name,
-              level: [1, 2, 3, 4].includes(parseInt(level))
-                ? parseInt(level)
-                : 1,
-              specialty: specialty || "",
-              absences: [],
-            });
+            const parsedLevel = parseInt(level);
+            const cleanLevel = [1, 2, 3, 4].includes(parsedLevel) ? parsedLevel as 1|2|3|4 : 1;
+            const existingRes = updatedResidents.find(
+              (r) => r.name.toLowerCase() === name.toLowerCase()
+            );
+
+            if (existingRes) {
+              existingRes.level = cleanLevel;
+              existingRes.specialty = specialty || "";
+              updatedCount++;
+            } else {
+              updatedResidents.push({
+                id: `res-${Date.now()}-${i}`,
+                name,
+                level: cleanLevel,
+                specialty: specialty || "",
+                absences: [],
+              });
+              addedCount++;
+            }
           }
         }
       }
 
-      if (subTab === "profs") setProfs([...profs, ...newItems]);
-      else if (subTab === "residents")
-        setResidents([...residents, ...newItems]);
+      if (subTab === "profs") setProfs(updatedProfs);
+      else if (subTab === "residents") setResidents(updatedResidents);
 
-      alert(`Importation réussie : ${newItems.length} profils ajoutés.`);
+      alert(
+        `✅ Importation terminée !\n\n➕ Ajoutés : ${addedCount}\n🔄 Mis à jour : ${updatedCount}\n\n⚠️ N'oubliez pas de cliquer sur "Synchroniser avec le serveur" pour sauvegarder dans la base de données.`
+      );
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -612,30 +690,59 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     document.body.removeChild(link);
   };
 
-  const addAbsence = (personId: string, date: string) => {
+  const addAbsence = (
+    personId: string,
+    date: string,
+    isPartial: boolean,
+    startTime?: string,
+    endTime?: string,
+  ) => {
     if (!date) return;
+    if (isPartial && (!startTime || !endTime)) {
+      alert("Veuillez renseigner l'heure de début et l'heure de fin.");
+      return;
+    }
+    if (isPartial && startTime! >= endTime!) {
+      alert("L'heure de fin doit être après l'heure de début.");
+      return;
+    }
+    const newAbsence: Absence = isPartial
+      ? { date, startTime, endTime }
+      : { date };
+
     if (subTab === "profs") {
       const prof = profs.find((p) => p.id === personId);
-      if (prof && !prof.absences.includes(date)) {
-        updateProf(personId, "absences", [...prof.absences, date]);
+      if (prof) {
+        // Eviter les doublons exacts
+        const isDuplicate = prof.absences.some(
+          (a) => a.date === date && a.startTime === startTime && a.endTime === endTime,
+        );
+        if (!isDuplicate)
+          updateProf(personId, "absences", [...prof.absences, newAbsence]);
       }
     } else {
       const res = residents.find((r) => r.id === personId);
-      if (res && !res.absences.includes(date)) {
-        updateResident(personId, "absences", [...res.absences, date]);
+      if (res) {
+        const isDuplicate = res.absences.some(
+          (a) => a.date === date && a.startTime === startTime && a.endTime === endTime,
+        );
+        if (!isDuplicate)
+          updateResident(personId, "absences", [...res.absences, newAbsence]);
       }
     }
   };
 
-  const removeAbsence = (personId: string, date: string) => {
-    if (window.confirm("Supprimer cette date d'indisponibilité ?")) {
+  const removeAbsence = (personId: string, absence: Absence) => {
+    if (window.confirm("Supprimer cette période d'indisponibilité ?")) {
       if (subTab === "profs") {
         const prof = profs.find((p) => p.id === personId);
         if (prof) {
           updateProf(
             personId,
             "absences",
-            prof.absences.filter((d) => d !== date),
+            prof.absences.filter(
+              (a) => !(a.date === absence.date && a.startTime === absence.startTime && a.endTime === absence.endTime),
+            ),
           );
         }
       } else {
@@ -644,11 +751,25 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           updateResident(
             personId,
             "absences",
-            res.absences.filter((d) => d !== date),
+            res.absences.filter(
+              (a) => !(a.date === absence.date && a.startTime === absence.startTime && a.endTime === absence.endTime),
+            ),
           );
         }
       }
     }
+  };
+
+  const formatAbsenceLabel = (absence: Absence): string => {
+    const dateStr = new Date(absence.date).toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+    if (absence.startTime && absence.endTime) {
+      return `${dateStr} · ${absence.startTime} → ${absence.endTime}`;
+    }
+    return dateStr;
   };
 
   const conflicts = useMemo(() => {
@@ -706,77 +827,151 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
     if (!person) return null;
 
+    const handleAdd = () => {
+      addAbsence(
+        person.id,
+        absenceDateInput,
+        absenceIsPartial,
+        absenceIsPartial ? absenceStartTime : undefined,
+        absenceIsPartial ? absenceEndTime : undefined,
+      );
+      // Reset form
+      setAbsenceDateInput("");
+      setAbsenceStartTime("");
+      setAbsenceEndTime("");
+      setAbsenceIsPartial(false);
+    };
+
+    const sortedAbsences = [...person.absences].sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return (a.startTime || "").localeCompare(b.startTime || "");
+    });
+
     return (
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          {/* Header */}
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-indigo-50/30">
             <div>
               <h3 className="font-black text-indigo-950 uppercase tracking-tight">
-                Exceptions & Congés
+                Exceptions &amp; Congés
               </h3>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                 {person.name}
               </p>
             </div>
             <button
-              onClick={() => setEditingAbsenceId(null)}
+              onClick={() => { setEditingAbsenceId(null); setAbsenceIsPartial(false); setAbsenceDateInput(""); setAbsenceStartTime(""); setAbsenceEndTime(""); }}
               className="p-2 hover:bg-slate-200 rounded-full transition-colors"
             >
               <ICONS.Plus className="w-5 h-5 rotate-45 text-slate-400" />
             </button>
           </div>
+
+          {/* Form */}
           <div className="p-6 space-y-4">
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">
-                Ajouter une date d'indisponibilité
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">
+                Ajouter une période d'indisponibilité
               </label>
-              <div className="flex gap-2">
+
+              {/* Date */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
                 <input
                   type="date"
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                  id="new-absence-date"
+                  value={absenceDateInput}
+                  onChange={(e) => setAbsenceDateInput(e.target.value)}
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
-                <button
-                  onClick={() => {
-                    const input = document.getElementById(
-                      "new-absence-date",
-                    ) as HTMLInputElement;
-                    addAbsence(person.id, input.value);
-                    input.value = "";
-                  }}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-black hover:bg-indigo-700 transition-all active:scale-95"
-                >
-                  AJOUTER
-                </button>
               </div>
+
+              {/* Toggle Partielle */}
+              <label className="flex items-center gap-3 cursor-pointer select-none group">
+                <div
+                  onClick={() => setAbsenceIsPartial(!absenceIsPartial)}
+                  className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
+                    absenceIsPartial ? "bg-indigo-600" : "bg-slate-200"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                      absenceIsPartial ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </div>
+                <span className="text-xs font-bold text-slate-600">
+                  Indisponibilité partielle <span className="text-slate-400 font-normal">(par heure)</span>
+                </span>
+              </label>
+
+              {/* Heures — affichées uniquement si partielle */}
+              {absenceIsPartial && (
+                <div className="flex gap-3 animate-in slide-in-from-top-2 duration-150">
+                  <div className="flex-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Heure début</span>
+                    <input
+                      type="time"
+                      value={absenceStartTime}
+                      onChange={(e) => setAbsenceStartTime(e.target.value)}
+                      className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Heure fin</span>
+                    <input
+                      type="time"
+                      value={absenceEndTime}
+                      onChange={(e) => setAbsenceEndTime(e.target.value)}
+                      className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleAdd}
+                className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-black hover:bg-indigo-700 transition-all active:scale-95"
+              >
+                + AJOUTER
+              </button>
             </div>
+
+            {/* Liste des absences */}
             <div className="space-y-2">
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Dates configurées
+                Périodes configurées
               </label>
-              <div className="max-h-48 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
-                {person.absences.length === 0 ? (
+              <div className="max-h-52 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
+                {sortedAbsences.length === 0 ? (
                   <div className="text-center py-6 text-slate-300 italic text-xs">
                     Aucune absence enregistrée
                   </div>
                 ) : (
-                  person.absences.sort().map((date) => (
+                  sortedAbsences.map((absence, idx) => (
                     <div
-                      key={date}
-                      className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2.5 rounded-lg group"
+                      key={`${absence.date}-${absence.startTime ?? ""}-${idx}`}
+                      className={`flex justify-between items-center p-2.5 rounded-lg border group ${
+                        absence.startTime
+                          ? "bg-amber-50 border-amber-100"
+                          : "bg-slate-50 border-slate-100"
+                      }`}
                     >
                       <div className="flex items-center gap-2">
-                        <ICONS.Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                        <span className="text-xs font-bold text-slate-700">
-                          {new Date(date).toLocaleDateString("fr-FR", {
-                            weekday: "long",
-                            day: "numeric",
-                            month: "long",
-                          })}
-                        </span>
+                        <ICONS.Calendar className={`w-3.5 h-3.5 ${absence.startTime ? "text-amber-400" : "text-indigo-400"}`} />
+                        <div>
+                          <span className="text-xs font-bold text-slate-700 block">
+                            {formatAbsenceLabel(absence)}
+                          </span>
+                          {absence.startTime && (
+                            <span className="text-[10px] font-medium text-amber-600 uppercase tracking-wide">
+                              Partielle
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
-                        onClick={() => removeAbsence(person.id, date)}
+                        onClick={() => removeAbsence(person.id, absence)}
                         className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors"
                       >
                         <ICONS.Trash2 className="w-4 h-4" />
@@ -787,9 +982,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Footer */}
           <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
             <button
-              onClick={() => setEditingAbsenceId(null)}
+              onClick={() => { setEditingAbsenceId(null); setAbsenceIsPartial(false); setAbsenceDateInput(""); setAbsenceStartTime(""); setAbsenceEndTime(""); }}
               className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
             >
               Terminer la gestion
@@ -805,25 +1002,25 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       {editingAbsenceId && <AbsenceModal />}
       <div className="flex border-b border-slate-200 gap-6">
         <button
-          onClick={() => setSubTab("profs")}
+          onClick={() => handleTabChange("profs")}
           className={`pb-2 px-1 text-sm font-medium transition-colors ${subTab === "profs" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
         >
           Enseignants
         </button>
         <button
-          onClick={() => setSubTab("residents")}
+          onClick={() => handleTabChange("residents")}
           className={`pb-2 px-1 text-sm font-medium transition-colors ${subTab === "residents" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
         >
           Résidents
         </button>
         <button
-          onClick={() => setSubTab("rooms")}
+          onClick={() => handleTabChange("rooms")}
           className={`pb-2 px-1 text-sm font-medium transition-colors ${subTab === "rooms" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
         >
           Salles
         </button>
         <button
-          onClick={() => setSubTab("exams")}
+          onClick={() => handleTabChange("exams")}
           className={`pb-2 px-1 text-sm font-medium transition-colors ${subTab === "exams" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
         >
           Examens
@@ -845,12 +1042,21 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           <div className="flex items-center gap-2">
             {(subTab === "profs" || subTab === "residents") && (
               <>
+                {selectedIds.length > 0 && (
+                  <button
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-1.5 p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200"
+                  >
+                    <ICONS.Trash2 className="w-4 h-4" />
+                    <span className="hidden sm:inline">Supprimer ({selectedIds.length})</span>
+                  </button>
+                )}
                 <button
                   onClick={downloadTemplate}
-                  title="Télécharger le modèle avec colonnes forcées"
-                  className="flex items-center gap-1.5 text-[10px] border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-md font-black tracking-widest uppercase transition-all shadow-sm"
+                  title="Télécharger le modèle CSV"
+                  className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
                 >
-                  <ICONS.FileSpreadsheet className="w-3.5 h-3.5" /> Modèle Excel
+                  <ICONS.Download className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -989,26 +1195,48 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] tracking-wider font-black border-b border-slate-100">
+          <table className="w-full text-sm text-left border-t border-slate-200">
+            <thead className="bg-slate-50 text-slate-500 font-medium">
               <tr>
                 {subTab === "profs" && (
                   <>
-                    <th className="px-6 py-3">Nom</th>
-                    <th className="px-6 py-3">Grade</th>
-                    <th className="px-6 py-3">Responsable</th>
-                    <th className="px-6 py-3">Matières</th>
-                    <th className="px-6 py-3">Exceptions</th>
-                    <th className="px-6 py-3 text-right">Actions</th>
+                    <th className="px-4 py-3">Nom</th>
+                    <th className="px-4 py-3">Grade</th>
+                    <th className="px-4 py-3">Promo Resp.</th>
+                    <th className="px-4 py-3">Matières</th>
+                    <th className="px-4 py-3">Indispos</th>
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={profs.length > 0 && selectedIds.length === profs.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(profs.map((p) => p.id));
+                          else setSelectedIds([]);
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </th>
+                    <th className="px-4 py-3 w-20">Actions</th>
                   </>
                 )}
                 {subTab === "residents" && (
                   <>
-                    <th className="px-6 py-3">Nom</th>
-                    <th className="px-6 py-3">Niveau</th>
-                    <th className="px-6 py-3">Spécialité</th>
-                    <th className="px-6 py-3">Exceptions</th>
-                    <th className="px-6 py-3 text-right">Actions</th>
+                    <th className="px-4 py-3">Nom</th>
+                    <th className="px-4 py-3">Niveau</th>
+                    <th className="px-4 py-3">Spécialité</th>
+                    <th className="px-4 py-3">Exceptions</th>
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={residents.length > 0 && selectedIds.length === residents.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(residents.map((r) => r.id));
+                          else setSelectedIds([]);
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </>
                 )}
                 {subTab === "rooms" && (
@@ -1112,6 +1340,14 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                         {p.absences.length} DATE(S)
                       </button>
                     </td>
+                    <td className="px-6 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(p.id)}
+                        onChange={(e) => toggleSelection(p.id, e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </td>
                     <td className="px-6 py-3 text-right">
                       <button
                         onClick={() =>
@@ -1179,6 +1415,14 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                         <ICONS.Calendar className="w-3 h-3" />{" "}
                         {r.absences.length} DATE(S)
                       </button>
+                    </td>
+                    <td className="px-6 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(r.id)}
+                        onChange={(e) => toggleSelection(r.id, e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
                     </td>
                     <td className="px-6 py-3 text-right">
                       <button
@@ -1373,25 +1617,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() =>
-                            deleteItem(
-                              e.id,
-                              exams,
-                              setExams,
-                              `Épreuve ${e.subject}`,
-                            )
-                          }
-                          className="text-slate-300 hover:text-red-500 p-1"
+                          onClick={(evt) => {
+                            evt.stopPropagation();
+                            duplicateExam(e);
+                          }}
+                          className="text-slate-300 hover:text-indigo-500 p-1"
                         >
-                          <button
-                            onClick={(evt) => {
-                              evt.stopPropagation();
-                              duplicateExam(e);
-                            }}
-                            className="text-slate-300 hover:text-indigo-500 p-1"
-                          >
-                            <ICONS.Copy className="w-4 h-4" />
-                          </button>
+                          <ICONS.Copy className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() =>

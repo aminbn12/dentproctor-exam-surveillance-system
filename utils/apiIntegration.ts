@@ -258,3 +258,37 @@ export const deleteAssignmentApi = async (id: string) => {
     headers,
   });
 };
+
+export const fetchHistoryRecordsApi = async () => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/history/`, {
+    method: "GET",
+    headers,
+  });
+};
+
+export const saveHistoryRecordApi = async (
+  periodName: string,
+  examsSnapshot: Exam[],
+  assignmentsSnapshot: Assignment[]
+) => {
+  const payload = {
+    period_name: periodName,
+    exams_snapshot: examsSnapshot,
+    assignments_snapshot: assignmentsSnapshot,
+  };
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/history/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteHistoryRecordApi = async (id: number) => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/history/${id}`, {
+    method: "DELETE",
+    headers,
+  });
+};

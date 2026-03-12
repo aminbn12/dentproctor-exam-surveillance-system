@@ -10,6 +10,7 @@ import {
   syncWithBackend,
   createAssignmentApi,
   deleteAssignmentApi,
+  saveHistoryRecordApi,
 } from "../utils/apiIntegration";
 
 interface PlanningTabProps {
@@ -190,6 +191,38 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
     }
   };
 
+  const handleArchive = async () => {
+    if (assignments.length === 0) {
+      alert("Il n'y a aucune affectation à archiver.");
+      return;
+    }
+
+    const periodName = prompt(
+      "Entrez un nom ou une période pour cette archive (ex: Session Normale Janvier) :",
+      `Planning du ${new Date().toLocaleDateString("fr-FR")}`
+    );
+
+    if (!periodName) return;
+
+    try {
+      // 1. Sauvegarder dans l'historique
+      await saveHistoryRecordApi(periodName, exams, assignments);
+
+      // 2. Vider les affectations actuelles
+      const backend = await syncWithBackend();
+      if (backend?.isBackendAvailable) {
+        for (const asgn of assignments) {
+          if (asgn.id) await deleteAssignmentApi(asgn.id);
+        }
+      }
+      setAssignments([]);
+      alert("✅ Planning archivé avec succès et grille réinitialisée !");
+    } catch (err) {
+      console.error("Erreur lors de l'archivage :", err);
+      alert("Une erreur est survenue lors de l'archivage. Vérifiez la connexion au serveur.");
+    }
+  };
+
   const handleExportExcel = () => {
     // Mapping des couleurs Tailwind vers Hexadécimal pour Excel
     const promoColors: Record<string, string> = {
@@ -316,12 +349,20 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
             Application automatique des règles de mixité et d'expérience.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3 flex-wrap justify-end">
           <button
             onClick={handleClearAll}
+            title="Effacer la grille actuelle"
             className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
           >
             Vider
+          </button>
+          <button
+            onClick={handleArchive}
+            title="Sauvegarder dans l'historique et vider la grille"
+            className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
+          >
+            <ICONS.Calendar className="w-4 h-4" /> Archiver
           </button>
           <button
             onClick={handleAutoFill}
@@ -348,11 +389,11 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
               {rooms.map((room) => (
                 <th
                   key={room.id}
-                  className="p-4 text-left border-l border-slate-100 min-w-[320px]"
+                  className="p-3 text-left border-l border-slate-100 min-w-[220px] max-w-[280px]"
                 >
-                  <div className="flex items-center gap-2">
-                    <ICONS.MapPin className="w-4 h-4 text-indigo-500" />
-                    <span className="font-bold text-slate-700 uppercase">
+                  <div className="flex items-center gap-1.5">
+                    <ICONS.MapPin className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="font-bold text-slate-700 uppercase text-xs truncate">
                       {room.name}
                     </span>
                   </div>
@@ -427,9 +468,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                     return (
                       <td
                         key={room.id}
-                        className={`p-4 border-l border-slate-100 align-top transition-colors ${warnings.length > 0 ? "bg-amber-50/30" : "group-hover:bg-indigo-50/10"}`}
+                        className={`p-3 border-l border-slate-100 align-top transition-colors ${warnings.length > 0 ? "bg-amber-50/30" : "group-hover:bg-indigo-50/10"}`}
                       >
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           {warnings.length > 0 && (
                             <div className="p-2 bg-amber-100/50 border border-amber-200 rounded text-[10px] text-amber-800 font-medium space-y-1">
                               {warnings.map((w, idx) => (
@@ -464,12 +505,12 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                                 return (
                                   <span
                                     key={pid}
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-medium shadow-sm ${isResp ? "bg-indigo-600 text-white border-indigo-700" : "bg-blue-50 text-blue-700 border-blue-200"}`}
+                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium shadow-sm w-full truncate ${isResp ? "bg-indigo-600 text-white border-indigo-700" : "bg-blue-50 text-blue-700 border-blue-200"}`}
                                   >
                                     {isResp && (
-                                      <ICONS.CheckCircle2 className="w-3 h-3 text-indigo-200" />
+                                      <ICONS.CheckCircle2 className="w-3 h-3 text-indigo-200 shrink-0" />
                                     )}
-                                    {p?.rank}. {p?.name}
+                                    <span className="truncate flex-1">{p?.rank}. {p?.name}</span>
                                     <button
                                       onClick={() => {
                                         if (
@@ -493,7 +534,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                               })}
                             </div>
                             <select
-                              className="w-full text-[11px] p-2 border border-slate-200 rounded-lg bg-white outline-none disabled:opacity-50"
+                              className="w-full text-[10px] p-1.5 border border-slate-200 rounded-md bg-white outline-none disabled:opacity-50"
                               onChange={(e) =>
                                 e.target.value &&
                                 updateAssignment(exam.id, room.id, "prof", [
@@ -536,10 +577,11 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                                 return (
                                   <span
                                     key={rid}
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-medium shadow-sm ${r?.level && r.level >= 3 ? "bg-emerald-600 text-white border-emerald-700" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}
+                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium shadow-sm w-full truncate ${r?.level && r.level >= 3 ? "bg-emerald-600 text-white border-emerald-700" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}
                                   >
-                                    R{r?.level} - {r?.name}
-                                    <span className="text-[8px] opacity-70 ml-1">
+                                    <span className="shrink-0">R{r?.level} -</span>
+                                    <span className="truncate flex-1">{r?.name}</span>
+                                    <span className="text-[8px] opacity-70 shrink-0">
                                       ({r?.specialty.substring(0, 4)}.)
                                     </span>
                                     <button
@@ -567,7 +609,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                               })}
                             </div>
                             <select
-                              className="w-full text-[11px] p-2 border border-slate-200 rounded-lg bg-white outline-none disabled:opacity-50"
+                              className="w-full text-[10px] p-1.5 border border-slate-200 rounded-md bg-white outline-none disabled:opacity-50"
                               onChange={(e) =>
                                 e.target.value &&
                                 updateAssignment(exam.id, room.id, "resident", [
