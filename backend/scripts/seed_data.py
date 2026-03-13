@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
-"""
-Script de génération de données de test pour DentProctor
-Crée des professeurs, résidents, salles, examens et assignments
-"""
-
+# -*- coding: utf-8 -*-
 import os
 import sys
+# Force UTF-8 output on Windows
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import SessionLocal, engine
 from app.models import (
     Base, User, Professor, Resident, Room, Exam, Assignment,
-    exam_room, prof_assignment, resident_assignment
 )
 from app.utils.security import hash_password
 from sqlalchemy import select
@@ -32,8 +31,13 @@ def create_test_data():
         # ===================== USERS =====================
         print("📝 Création des utilisateurs...")
         
-        # Admin
-        admin_user = User(
+        # Check if users already exist
+        existing_users = db.query(User).count()
+        if existing_users > 0:
+            print(f"  {existing_users} utilisateurs deja existants, skip...")
+        else:
+            # Admin
+            admin_user = User(
             username="admin",
             email="admin@dentproctor.tn",
             hashed_password=hash_password("admin123"),

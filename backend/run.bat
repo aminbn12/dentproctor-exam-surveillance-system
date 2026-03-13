@@ -47,13 +47,13 @@ echo ✅ Tous les fichiers sont prêts!
 echo.
 echo 🚀 Démarrage du serveur...
 echo.
-echo API disponible sur: http://localhost:8000
-echo Documentation: http://localhost:8000/docs
+echo API disponible sur: http://localhost:8100
+echo Documentation: http://localhost:8100/docs
 echo.
 echo Appuie sur Ctrl+C pour arrêter
 echo.
 
 REM Lancer le serveur
-uvicorn app.main:app --reload --host 0.0.0.0
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8100
 
 pause

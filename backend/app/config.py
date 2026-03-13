@@ -7,7 +7,7 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class Settings(BaseSettings):
     # Application
-    APP_NAME: str = "DentProctor API"
+    APP_NAME: str = "APP surveillances UM6SS API"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = ENVIRONMENT == "development"
     

@@ -11,7 +11,7 @@ create_tables()
 
 # Initialiser l'app FastAPI
 app = FastAPI(
-    title="DentProctor API",
+    title="APP surveillances UM6SS API",
     description="Système de surveillance des examens - Faculté de Médecine Dentaire",
     version="1.0.0",
     docs_url="/docs",
@@ -38,7 +38,7 @@ async def health_check():
 async def root():
     """Route racine"""
     return {
-        "message": "🎓 Bienvenue sur DentProctor API",
+        "message": "🎓 Bienvenue sur APP surveillances UM6SS API",
         "version": "1.0.0",
         "docs": "/docs",
         "environment": settings.ENVIRONMENT

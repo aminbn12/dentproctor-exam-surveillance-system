@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models.history_record import HistoryRecord
 from app.schemas.history_record import HistoryRecord as HistoryRecordSchema, HistoryRecordCreate
 
-router = APIRouter(prefix="/history", tags=["history"])
+router = APIRouter(prefix="/api/history", tags=["history"])
 
 @router.post("/", response_model=HistoryRecordSchema)
 def create_history_record(record: HistoryRecordCreate, db: Session = Depends(get_db)):

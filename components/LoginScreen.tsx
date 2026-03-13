@@ -75,7 +75,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <ICONS.GraduationCap className="w-12 h-12" />
           </div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase mb-2">
-            DentProctor
+            APP surveillances UM6SS
           </h1>
           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">
             {isBackendAvailable
