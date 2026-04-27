@@ -1,11 +1,13 @@
 # Multi-stage Dockerfile for DentProctor (Backend + Frontend)
 # Stage 1: Build frontend
-FROM node:18-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
+
+# Install ALL dependencies (including devDependencies like vite)
+RUN npm ci
 
 # Copy frontend source
 COPY . .
@@ -17,7 +19,7 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install system dependencies (optional: for PostgreSQL, etc.)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
