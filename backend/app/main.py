@@ -43,16 +43,6 @@ async def health_check():
     """Vérifier l'état de l'API"""
     return {"status": "✅ API healthy", "version": "1.0.0"}
 
-@app.get("/")
-async def root():
-    """Route racine"""
-    return {
-        "message": "🎓 Bienvenue sur APP surveillances UM6SS API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "environment": settings.ENVIRONMENT
-    }
-
 # Inclusion des routes
 app.include_router(auth.router)
 app.include_router(professors.router)
