@@ -43,6 +43,7 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "role": user.role,
             "staff_type": user.staff_type,
+            "department": user.department,
             "is_active": user.is_active
         }
     }
@@ -61,7 +62,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         role=user_data.role,
-        staff_type=user_data.staff_type
+        staff_type=user_data.staff_type,
+        department=user_data.department
     )
     db.add(new_user)
     db.commit()

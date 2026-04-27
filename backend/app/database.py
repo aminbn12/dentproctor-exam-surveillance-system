@@ -29,4 +29,9 @@ def get_db():
 def create_tables():
     """Créer toutes les tables de la base de données"""
     from app.models.base import Base
+    # Import all models to ensure they're registered
+    from app.models import (
+        User, Professor, Resident, Room, Exam, 
+        Assignment, Absence, HistoryRecord, ConfigChangeLog, Proctor
+    )
     Base.metadata.create_all(bind=engine)

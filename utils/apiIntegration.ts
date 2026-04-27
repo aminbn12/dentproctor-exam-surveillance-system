@@ -1,5 +1,13 @@
 // Utilitaires pour intégrer l'API backend avec localStorage
-import { Professor, Resident, Room, Exam, Assignment } from "./types";
+import {
+  Professor,
+  Resident,
+  Room,
+  Exam,
+  Assignment,
+  ConfigChangeLog,
+  Proctor,
+} from "../types";
 
 export const syncWithBackend = async () => {
   // Utiliser une URL relative pour profiter du proxy Vite en développement
@@ -270,7 +278,7 @@ export const fetchHistoryRecordsApi = async () => {
 export const saveHistoryRecordApi = async (
   periodName: string,
   examsSnapshot: Exam[],
-  assignmentsSnapshot: Assignment[]
+  assignmentsSnapshot: Assignment[],
 ) => {
   const payload = {
     period_name: periodName,
@@ -288,6 +296,182 @@ export const saveHistoryRecordApi = async (
 export const deleteHistoryRecordApi = async (id: number) => {
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/history/${id}`, {
+    method: "DELETE",
+    headers,
+  });
+};
+
+// --- Admin Profile Management API ---
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name?: string;
+  department?: string;
+  role: "ADMIN" | "PROCTOR" | "SUPER_ADMIN";
+  staff_type?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateAdminRequest {
+  username: string;
+  email: string;
+  password: string;
+  full_name?: string;
+  department?: string;
+  role?: string;
+}
+
+export interface UpdateAdminRequest {
+  email?: string;
+  full_name?: string;
+  department?: string;
+  is_active?: boolean;
+}
+
+export const getCurrentUserProfileApi = async (): Promise<AdminUser> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users/me`, {
+    method: "GET",
+    headers,
+  });
+};
+
+export const updateCurrentUserProfileApi = async (
+  data: UpdateAdminRequest,
+): Promise<AdminUser> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users/me`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+};
+
+export const getAllUsersApi = async (): Promise<AdminUser[]> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users`, {
+    method: "GET",
+    headers,
+  });
+};
+
+export const createAdminUserApi = async (
+  data: CreateAdminRequest,
+): Promise<AdminUser> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+};
+
+export const updateUserByIdApi = async (
+  userId: string,
+  data: UpdateAdminRequest,
+): Promise<AdminUser> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users/${userId}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteUserApi = async (
+  userId: string,
+): Promise<{ message: string }> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/admin/users/${userId}`, {
+    method: "DELETE",
+    headers,
+  });
+};
+
+// --- Fetch Professors and Residents for Staff Management ---
+
+export const fetchProfessorsApi = async (): Promise<any[]> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/professors`, {
+    method: "GET",
+    headers,
+  });
+};
+
+export const fetchResidentsApi = async (): Promise<any[]> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/residents`, {
+    method: "GET",
+    headers,
+  });
+};
+
+// --- Config Changes Logs API ---
+
+export const fetchConfigChangesApi = async (
+  entityType?: string,
+  action?: string,
+): Promise<ConfigChangeLog[]> => {
+  const headers = getFetchHeaders();
+  let url = `${API_BASE}/config-changes?`;
+  if (entityType) url += `entity_type=${entityType}&`;
+  if (action) url += `action=${action}&`;
+  return safeFetch(url, {
+    method: "GET",
+    headers,
+  });
+};
+
+// --- Proctor API ---
+
+export const fetchProctorsApi = async (): Promise<Proctor[]> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/proctors`, {
+    method: "GET",
+    headers,
+  });
+};
+
+export const createProctorApi = async (
+  proctor: Partial<Proctor>,
+): Promise<Proctor> => {
+  const payload = {
+    name: proctor.name,
+    specialty: proctor.specialty || null,
+    phone: proctor.phone || null,
+    email: proctor.email || null,
+  };
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/proctors`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateProctorApi = async (
+  id: string,
+  data: Partial<Proctor>,
+): Promise<Proctor> => {
+  const payload: any = {};
+  if (data.name !== undefined) payload.name = data.name;
+  if (data.specialty !== undefined) payload.specialty = data.specialty;
+  if (data.phone !== undefined) payload.phone = data.phone;
+  if (data.email !== undefined) payload.email = data.email;
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/proctors/${id}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteProctorApi = async (id: string): Promise<void> => {
+  const headers = getFetchHeaders();
+  return safeFetch(`${API_BASE}/proctors/${id}`, {
     method: "DELETE",
     headers,
   });

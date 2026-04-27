@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { HistoryRecord, Professor, Resident, Room } from "../types";
+import {
+  HistoryRecord,
+  Professor,
+  Resident,
+  Room,
+  ConfigChangeLog,
+} from "../types";
 import {
   fetchHistoryRecordsApi,
   deleteHistoryRecordApi,
+  fetchConfigChangesApi,
 } from "../utils/apiIntegration";
 import { ICONS } from "../constants";
 
@@ -14,13 +21,19 @@ interface HistoryTabProps {
 
 const HistoryTab: React.FC<HistoryTabProps> = ({ profs, residents, rooms }) => {
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
+  const [configChanges, setConfigChanges] = useState<ConfigChangeLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"history" | "config">("history");
 
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const data = await fetchHistoryRecordsApi();
-        setHistoryRecords(data);
+        const [historyData, configData] = await Promise.all([
+          fetchHistoryRecordsApi(),
+          fetchConfigChangesApi(),
+        ]);
+        setHistoryRecords(historyData);
+        setConfigChanges(configData);
       } catch (err) {
         console.error("Erreur lors du chargement de l'historique :", err);
       } finally {
@@ -63,32 +76,43 @@ const HistoryTab: React.FC<HistoryTabProps> = ({ profs, residents, rooms }) => {
       <body>
         <h2>${record.period_name}</h2>
         <p>Date d'archive: ${new Date(record.date_saved).toLocaleString("fr-FR")}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Heure</th>
-              <th>Durée</th>
-              <th>Promo</th>
-              <th>Épreuve</th>
-              <th>Salle</th>
-              <th>Enseignants (Surveillants)</th>
-              <th>Résidents (Surveillants)</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+         <table>
+           <thead>
+             <tr>
+               <th>Date</th>
+               <th>Heure Début</th>
+               <th>Heure Fin</th>
+               <th>Durée</th>
+               <th>Promo</th>
+               <th>Épreuve</th>
+               <th>Salle</th>
+               <th>Enseignants (Surveillants)</th>
+               <th>Résidents (Surveillants)</th>
+             </tr>
+           </thead>
+           <tbody>
+     `;
 
-    const sortedExams = [...record.exams_snapshot]
-      .filter((e) => e.date && e.time)
-      .sort(
-        (a, b) =>
-          new Date(`${a.date}T${a.time}`).getTime() -
-          new Date(`${b.date}T${b.time}`).getTime(),
-      );
+     const sortedExams = [...record.exams_snapshot]
+       .filter((e) => e.date && e.time)
+       .sort(
+         (a, b) =>
+           new Date(`${a.date}T${a.time}`).getTime() -
+           new Date(`${b.date}T${b.time}`).getTime(),
+       );
 
-    sortedExams.forEach((exam) => {
-      const examRooms = exam.roomIds || [];
+     // Fonction pour calculer l'heure de fin
+     const getEndTime = (time: string, duration: number) => {
+       const [hours, minutes] = time.split(":").map(Number);
+       const totalMinutes = hours * 60 + minutes + duration;
+       const endHours = Math.floor(totalMinutes / 60);
+       const endMinutes = totalMinutes % 60;
+       return `${String(endHours).padStart(2, "0")}:${String(endMinutes).padStart(2, "0")}`;
+     };
+
+     sortedExams.forEach((exam) => {
+       const examRooms = exam.roomIds || [];
+       const endTime = getEndTime(exam.time, exam.duration);
 
       examRooms.forEach((roomId) => {
         const room = rooms.find((r) => r.id === roomId);
@@ -114,28 +138,36 @@ const HistoryTab: React.FC<HistoryTabProps> = ({ profs, residents, rooms }) => {
             })
             .join(", ") || "";
 
-        // Same logic as PlanningTab for residents
-        const assignedResidents =
-          (assignment?.residentIds ?? [])
-            .map((id) => residents.find((r) => r.id === id))
-            .filter(Boolean)
-            .map((r) => `Dr. ${r?.name}`)
-            .join(", ") || "";
+          // Same logic as PlanningTab for residents
+          const assignedResidents =
+            (assignment?.residentIds ?? [])
+              .map((id) => residents.find((r) => r.id === id))
+              .filter(Boolean)
+              .map((r) => {
+                const rawName = r?.name || "";
+                // Ajouter "Dr." uniquement si pas déjà présent
+                if (/^(Dr\.?|Doctor)\s+/i.test(rawName)) {
+                  return rawName;
+                }
+                return `Dr. ${rawName}`;
+              })
+              .join(", ") || "";
 
-        const bgColor = "#ffffff";
+          const bgColor = "#ffffff";
 
-        tableContent += `
-          <tr>
-            <td class="centered">${exam.date}</td>
-            <td class="centered">${exam.time}</td>
-            <td class="centered">${Math.floor(exam.duration / 60)}h${String(exam.duration % 60).padStart(2, "0")}</td>
-            <td class="centered" style="font-weight: bold; background-color: ${bgColor}">${exam.promo}</td>
-            <td style="font-weight: bold;">${exam.subject}</td>
-            <td class="centered">${room.name}</td>
-            <td>${assignedProfs}</}</td>
-            <td>${assignedResidents}</td>
-          </tr>
-        `;
+          tableContent += `
+            <tr>
+              <td class="centered">${exam.date}</td>
+              <td class="centered">${exam.time}</td>
+              <td class="centered">${endTime}</td>
+              <td class="centered">${Math.floor(exam.duration / 60)}h${String(exam.duration % 60).padStart(2, "0")}</td>
+              <td class="centered" style="font-weight: bold; background-color: ${bgColor}">${exam.promo}</td>
+              <td style="font-weight: bold; background-color: ${bgColor}">${exam.subject}</td>
+              <td class="centered" style="color: #dc2626; font-weight: bold;">${room.name}</td>
+              <td>${assignedProfs}</td>
+              <td>${assignedResidents}</td>
+            </tr>
+          `;
       });
     });
 
@@ -235,6 +267,97 @@ const HistoryTab: React.FC<HistoryTabProps> = ({ profs, residents, rooms }) => {
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Section Historique des Modifications de Configuration */}
+      <div className="mt-8">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 tracking-tight uppercase">
+              Historique des Modifications
+            </h2>
+            <p className="text-slate-500 text-sm">
+              Suivi des modifications de configuration (Professeurs, Résidents,
+              Salles)
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          {configChanges.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">
+              Aucune modification de configuration enregistrée.
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4">Date</th>
+                  <th className="px-6 py-4">Administrateur</th>
+                  <th className="px-6 py-4">Type</th>
+                  <th className="px-6 py-4">Entité</th>
+                  <th className="px-6 py-4">Action</th>
+                  <th className="px-6 py-4">Détails</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {configChanges.map((change) => (
+                  <tr
+                    key={change.id}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-6 py-4 text-slate-500">
+                      {new Date(change.timestamp).toLocaleString("fr-FR")}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-700">
+                      {change.user_name || "Inconnu"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                          change.entity_type === "professor"
+                            ? "bg-blue-50 text-blue-700"
+                            : change.entity_type === "resident"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-purple-50 text-purple-700"
+                        }`}
+                      >
+                        {change.entity_type === "professor"
+                          ? "Professeur"
+                          : change.entity_type === "resident"
+                            ? "Résident"
+                            : "Salle"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {change.entity_name || change.entity_id}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                          change.action === "create"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : change.action === "update"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {change.action === "create"
+                          ? "Création"
+                          : change.action === "update"
+                            ? "Modification"
+                            : "Suppression"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 text-xs">
+                      {change.change_summary || "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

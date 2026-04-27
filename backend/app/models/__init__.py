@@ -8,5 +8,7 @@ from app.models.exam import Exam
 from app.models.assignment import Assignment
 from app.models.absence import Absence
 from app.models.history_record import HistoryRecord
+from app.models.config_change_log import ConfigChangeLog, EntityType, ActionType
+from app.models.proctor import Proctor
 
-__all__ = ['Base', 'User', 'Professor', 'Resident', 'Room', 'Exam', 'Assignment', 'Absence', 'HistoryRecord']
+__all__ = ['Base', 'User', 'Professor', 'Resident', 'Room', 'Exam', 'Assignment', 'Absence', 'HistoryRecord', 'ConfigChangeLog', 'EntityType', 'ActionType', 'Proctor']

@@ -1,11 +1,12 @@
 export type Promo = "FM6MD1" | "FM6MD2" | "FM6MD3" | "FM6MD4" | "FM6MD5";
-export type UserRole = "ADMIN" | "PROCTOR";
+export type UserRole = "ADMIN" | "PROCTOR" | "SUPER_ADMIN";
 
 export interface UserSession {
   id: string;
   name: string;
   role: UserRole;
   type?: "prof" | "resident";
+  department?: string; // Department for admins
 }
 
 /**
@@ -14,9 +15,9 @@ export interface UserSession {
  * - Sinon, c'est une journée entière d'indisponibilité.
  */
 export interface Absence {
-  date: string;        // format YYYY-MM-DD
-  startTime?: string;  // format HH:MM (optionnel, pour une plage horaire)
-  endTime?: string;    // format HH:MM (optionnel, pour une plage horaire)
+  date: string; // format YYYY-MM-DD
+  startTime?: string; // format HH:MM (optionnel, pour une plage horaire)
+  endTime?: string; // format HH:MM (optionnel, pour une plage horaire)
 }
 
 export interface Professor {
@@ -41,6 +42,7 @@ export interface Room {
   name: string;
   profCapacity: number;
   residentCapacity: number;
+  proctorCapacity?: number; // Capacité administration
 }
 
 export interface Exam {
@@ -59,14 +61,48 @@ export interface Assignment {
   roomId: string;
   profIds: string[];
   residentIds: string[];
+  proctorIds?: string[]; // Added proctor support
 }
 
 export interface HistoryRecord {
   id: number;
+  user_id: string; // Track which admin created this
   date_saved: string;
   period_name: string;
   exams_snapshot: Exam[];
   assignments_snapshot: Assignment[];
 }
 
-export type AppTab = "config" | "planning" | "stats" | "my-planning" | "history";
+export type EntityType = "professor" | "resident" | "room" | "proctor";
+export type ActionType = "create" | "update" | "delete";
+
+export interface ConfigChangeLog {
+  id: number;
+  user_id: string;
+  user_name: string | null;
+  entity_type: EntityType;
+  entity_id: string;
+  entity_name: string | null;
+  action: ActionType;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  change_summary: string | null;
+  timestamp: string;
+}
+
+export interface Proctor {
+  id: string;
+  name: string;
+  specialty: string;
+  phone?: string;
+  email?: string;
+  is_active: number;
+}
+
+export type AppTab =
+  | "config"
+  | "planning"
+  | "stats"
+  | "my-planning"
+  | "history"
+  | "profile";

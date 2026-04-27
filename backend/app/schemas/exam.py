@@ -9,7 +9,7 @@ class ExamBase(BaseModel):
     subject: str
 
 class ExamCreate(ExamBase):
-    room_ids: List[str]
+    room_ids: List[str] = []
 
 class ExamUpdate(BaseModel):
     date: Optional[str] = None
@@ -19,6 +19,7 @@ class ExamUpdate(BaseModel):
 
 class ExamResponse(ExamBase):
     id: str
+    room_ids: List[str] = []
 
     class Config:
         from_attributes = True

@@ -6,6 +6,7 @@ class UserBase(BaseModel):
     username: str
     email: str
     full_name: Optional[str] = None
+    department: Optional[str] = None  # Department field for admins
     
     @field_validator('email')
     @classmethod
@@ -20,6 +21,7 @@ class UserCreate(UserBase):
     password: str
     role: str = 'ADMIN'
     staff_type: Optional[str] = None
+    department: Optional[str] = None
 
 class UserLogin(BaseModel):
     username: str
@@ -29,6 +31,7 @@ class UserResponse(UserBase):
     id: str
     role: str
     staff_type: Optional[str]
+    department: Optional[str]
     is_active: bool
 
     class Config:

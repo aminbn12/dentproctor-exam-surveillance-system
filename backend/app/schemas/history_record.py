@@ -12,6 +12,7 @@ class HistoryRecordCreate(HistoryRecordBase):
 
 class HistoryRecord(HistoryRecordBase):
     id: int
+    user_id: str
     date_saved: datetime
 
     class Config:

@@ -7,6 +7,7 @@ import {
   Assignment,
   AppTab,
   UserSession,
+  Proctor,
 } from "./types";
 import {
   INITIAL_PROFESSORS,
@@ -21,6 +22,7 @@ import HistoryTab from "./components/HistoryTab";
 import StatsTab from "./components/StatsTab";
 import ProctorView from "./components/ProctorView";
 import LoginScreen from "./components/LoginScreen";
+import AdminProfileTab from "./components/AdminProfileTab";
 import { saveToLocalStorage, loadFromLocalStorage } from "./utils/storage";
 import { syncWithBackend, getFetchHeaders } from "./utils/apiIntegration";
 import {
@@ -42,34 +44,70 @@ const App: React.FC = () => {
   const [isBackendAvailable, setIsBackendAvailable] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
-  // Data State - Chargement depuis localStorage ou valeurs par défaut
-  const [profs, setProfs] = useState<Professor[]>(() => {
+  // Data State - Chargement depuis localStorage AVANT tout (priorité locale)
+  // On ne charge les données par défaut que si localStorage est vide
+  const getInitialProfs = (): Professor[] => {
     const saved = loadFromLocalStorage();
-    return saved?.profs?.length ? saved.profs : INITIAL_PROFESSORS;
-  });
-  const [residents, setResidents] = useState<Resident[]>(() => {
+    console.log(
+      "📂 Chargement profs depuis localStorage:",
+      saved?.profs?.length || 0,
+    );
+    // Priorité: localStorage > backend (chargé plus tard) > défaut
+    if (saved?.profs && saved.profs.length > 0) {
+      return saved.profs;
+    }
+    return INITIAL_PROFESSORS;
+  };
+
+  const getInitialResidents = (): Resident[] => {
     const saved = loadFromLocalStorage();
-    return saved?.residents?.length ? saved.residents : INITIAL_RESIDENTS;
-  });
-  const [rooms, setRooms] = useState<Room[]>(() => {
+    if (saved?.residents && saved.residents.length > 0) {
+      return saved.residents;
+    }
+    return INITIAL_RESIDENTS;
+  };
+
+  const getInitialRooms = (): Room[] => {
     const saved = loadFromLocalStorage();
-    return saved?.rooms?.length ? saved.rooms : INITIAL_ROOMS;
-  });
-  const [exams, setExams] = useState<Exam[]>(() => {
+    if (saved?.rooms && saved.rooms.length > 0) {
+      return saved.rooms;
+    }
+    return INITIAL_ROOMS;
+  };
+
+  const getInitialExams = (): Exam[] => {
     const saved = loadFromLocalStorage();
-    return saved?.exams?.length ? saved.exams : INITIAL_EXAMS;
-  });
+    if (saved?.exams && saved.exams.length > 0) {
+      return saved.exams;
+    }
+    return INITIAL_EXAMS;
+  };
+
+  const [profs, setProfs] = useState<Professor[]>(getInitialProfs);
+  const [residents, setResidents] = useState<Resident[]>(getInitialResidents);
+  const [rooms, setRooms] = useState<Room[]>(getInitialRooms);
+  const [exams, setExams] = useState<Exam[]>(getInitialExams);
   const [assignments, setAssignments] = useState<Assignment[]>(() => {
     const saved = loadFromLocalStorage();
     return saved?.assignments || [];
   });
+  const [proctors, setProctors] = useState<Proctor[]>(() => {
+    return []; // Initialize empty, will load from backend if available
+  });
 
-  // Sauvegarder automatiquement quand les données changent
+  // Sauvegarder automatiquement quand les données changent (VERS localStorage)
   useEffect(() => {
+    console.log("💾 Sauvegarde vers localStorage:", {
+      profs: profs.length,
+      residents: residents.length,
+      rooms: rooms.length,
+      exams: exams.length,
+    });
     saveToLocalStorage(profs, residents, rooms, exams, assignments);
   }, [profs, residents, rooms, exams, assignments]);
 
-  // Vérifier la disponibilité du backend et charger les données
+  // charger les données depuis le backend SEULEMENT si localStorage est vide
+  // Le backend sert de sauvegarde secondaire, mais on ne remplace pas les données locales
   useEffect(() => {
     const checkBackendAndLoadData = async () => {
       const backend = await syncWithBackend();
@@ -84,56 +122,86 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Charger les données depuis le backend
+  // Charger les données depuis le backend SEULEMENT si localStorage est vide (fallback)
   const loadDataFromBackend = async (apiUrl: string) => {
     setIsLoadingData(true);
     try {
       const headers = getFetchHeaders();
+      const saved = loadFromLocalStorage();
 
-      // Charger les professeurs - ne remplacer que si le backend a des données
+      // Charger les professors - SEULEMENT si localStorage est vide
       const profsRes = await fetch(`${apiUrl}/professors`, { headers });
       if (profsRes.ok) {
         const backendProfs: BackendProfessor[] = await profsRes.json();
-        // Ne remplacer les données locales que si le backend a des données
-        if (backendProfs && backendProfs.length > 0) {
+        // Utiliser backend seulement si localStorage est vide
+        if (
+          backendProfs &&
+          backendProfs.length > 0 &&
+          (!saved?.profs || saved.profs.length === 0)
+        ) {
           setProfs(backendProfs.map(adaptProfessor));
         }
       }
 
-      // Charger les résidents - ne remplacer que si le backend a des données
+      // Charger les résidents - SEULEMENT si localStorage est vide
       const residentsRes = await fetch(`${apiUrl}/residents`, { headers });
       if (residentsRes.ok) {
         const backendResidents: BackendResident[] = await residentsRes.json();
-        // Ne remplacer les données locales que si le backend a des données
-        if (backendResidents && backendResidents.length > 0) {
+        if (
+          backendResidents &&
+          backendResidents.length > 0 &&
+          (!saved?.residents || saved.residents.length === 0)
+        ) {
           setResidents(backendResidents.map(adaptResident));
         }
       }
 
-      // Charger les salles - ne remplacer que si le backend a des données
+      // Charger les salles - SEULEMENT si localStorage est vide
       const roomsRes = await fetch(`${apiUrl}/rooms`, { headers });
       if (roomsRes.ok) {
         const backendRooms: BackendRoom[] = await roomsRes.json();
-        if (backendRooms && backendRooms.length > 0) {
+        if (
+          backendRooms &&
+          backendRooms.length > 0 &&
+          (!saved?.rooms || saved.rooms.length === 0)
+        ) {
           setRooms(backendRooms.map(adaptRoom));
         }
       }
 
-      // Charger les examens - ne remplacer que si le backend a des données
+      // Charger les examens - SEULEMENT si localStorage est vide
       const examsRes = await fetch(`${apiUrl}/exams`, { headers });
       if (examsRes.ok) {
         const backendExams: BackendExam[] = await examsRes.json();
-        if (backendExams && backendExams.length > 0) {
+        if (
+          backendExams &&
+          backendExams.length > 0 &&
+          (!saved?.exams || saved.exams.length === 0)
+        ) {
           setExams(backendExams.map(adaptExam));
         }
       }
 
-      // Charger les assignments - ne remplacer que si le backend a des données
+      // Charger les surveillants (proctors) - SEULEMENT si vide
+      const proctorsRes = await fetch(`${apiUrl}/proctors`, { headers });
+      if (proctorsRes.ok) {
+        const backendProctors = await proctorsRes.json();
+        if (backendProctors && backendProctors.length > 0) {
+          setProctors(backendProctors);
+        }
+      }
+
+      // Charger les assignments - SEULEMENT si localStorage est vide
       const assignmentsRes = await fetch(`${apiUrl}/assignments`, { headers });
       if (assignmentsRes.ok) {
         const backendAssignments: BackendAssignment[] =
           await assignmentsRes.json();
-        if (backendAssignments && backendAssignments.length > 0) {
+        // Utiliser backend seulement si localStorage est vide
+        if (
+          backendAssignments &&
+          backendAssignments.length > 0 &&
+          (!saved?.assignments || saved.assignments.length === 0)
+        ) {
           const roomsMap = new Map<string, Room>(
             rooms.map((r: Room) => [r.id, r]),
           );
@@ -181,15 +249,17 @@ const App: React.FC = () => {
                 APP surveillances UM6SS
               </h1>
               <p className="text-[10px] uppercase font-black tracking-widest text-indigo-300">
-                {user.role === "ADMIN"
-                  ? "Administration Centrale"
-                  : `Espace ${user.type === "prof" ? "Enseignant" : "Résident"}`}
+                {user.role === "SUPER_ADMIN"
+                  ? "Super Administration"
+                  : user.role === "ADMIN"
+                    ? "Administration Centrale"
+                    : `Espace ${user.type === "prof" ? "Enseignant" : "Résident"}`}
               </p>
             </div>
           </div>
 
           <nav className="flex bg-indigo-800/50 rounded-lg p-1">
-            {user.role === "ADMIN" ? (
+            {user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? (
               <>
                 <button
                   onClick={() => setActiveTab("config")}
@@ -214,6 +284,12 @@ const App: React.FC = () => {
                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "stats" ? "bg-white text-indigo-700 shadow-sm" : "hover:bg-indigo-600/50 text-indigo-100"}`}
                 >
                   Équité
+                </button>
+                <button
+                  onClick={() => setActiveTab("profile")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "profile" ? "bg-white text-indigo-700 shadow-sm" : "hover:bg-indigo-600/50 text-indigo-100"}`}
+                >
+                  Profil
                 </button>
               </>
             ) : (
@@ -261,6 +337,8 @@ const App: React.FC = () => {
             setRooms={setRooms}
             exams={exams}
             setExams={setExams}
+            proctors={proctors}
+            setProctors={setProctors}
           />
         )}
         {activeTab === "planning" && (
@@ -271,6 +349,7 @@ const App: React.FC = () => {
             exams={exams}
             assignments={assignments}
             setAssignments={setAssignments}
+            proctors={proctors}
           />
         )}
         {activeTab === "history" && (
@@ -293,6 +372,7 @@ const App: React.FC = () => {
             residents={residents}
           />
         )}
+        {activeTab === "profile" && <AdminProfileTab user={user} />}
       </main>
 
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 font-bold uppercase tracking-widest">

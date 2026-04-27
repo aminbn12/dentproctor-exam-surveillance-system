@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from "react";
-import { Absence } from "../types";
+import { Absence, Proctor } from "../types";
 import { Professor, Resident, Room, Exam, Promo } from "../types";
 import { ICONS, PROMOS, PROMO_COLORS } from "../constants";
 import { exportToJSON, importFromJSON } from "../utils/storage";
@@ -14,6 +14,9 @@ import {
   createRoomApi,
   updateRoomApi,
   deleteRoomApi,
+  createProctorApi,
+  updateProctorApi,
+  deleteProctorApi,
   createExamApi,
   updateExamApi,
   deleteExamApi,
@@ -34,6 +37,8 @@ interface ConfigTabProps {
   setRooms: (rm: Room[]) => void;
   exams: Exam[];
   setExams: (e: Exam[]) => void;
+  proctors: Proctor[];
+  setProctors: (p: Proctor[]) => void;
 }
 
 const ConfigTab: React.FC<ConfigTabProps> = ({
@@ -45,9 +50,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
   setRooms,
   exams,
   setExams,
+  proctors,
+  setProctors,
 }) => {
   const [subTab, setSubTab] = useState<
-    "profs" | "residents" | "rooms" | "exams"
+    "profs" | "residents" | "rooms" | "exams" | "proctors"
   >("profs");
   const [editingAbsenceId, setEditingAbsenceId] = useState<string | null>(null);
   const [absenceIsPartial, setAbsenceIsPartial] = useState(false);
@@ -59,7 +66,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
   const importJsonRef = useRef<HTMLInputElement>(null);
 
   // Vider la sélection quand on change d'onglet
-  const handleTabChange = (newTab: "profs" | "residents" | "rooms" | "exams") => {
+  const handleTabChange = (
+    newTab: "profs" | "residents" | "rooms" | "exams" | "proctors",
+  ) => {
     setSubTab(newTab);
     setSelectedIds([]);
   };
@@ -374,7 +383,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           console.warn("Suppression backend échouée, suppression locale", err);
         } finally {
           setter(list.filter((item) => item.id !== id));
-          setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id)); // Retirer de la sélection s'il y était
+          setSelectedIds((prev) =>
+            prev.filter((selectedId) => selectedId !== id),
+          ); // Retirer de la sélection s'il y était
         }
       })();
     }
@@ -383,7 +394,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
     const typeLabel = subTab === "profs" ? "enseignants" : "résidents";
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer les ${selectedIds.length} ${typeLabel} sélectionné(s) ?`)) {
+    if (
+      window.confirm(
+        `Êtes-vous sûr de vouloir supprimer les ${selectedIds.length} ${typeLabel} sélectionné(s) ?`,
+      )
+    ) {
       (async () => {
         try {
           const backend = await syncWithBackend();
@@ -395,7 +410,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             }
           }
         } catch (err) {
-          console.warn("Suppression en masse backend a échoué (partiellement ou totalement).", err);
+          console.warn(
+            "Suppression en masse backend a échoué (partiellement ou totalement).",
+            err,
+          );
         } finally {
           // Mise à jour locale
           if (subTab === "profs") {
@@ -531,6 +549,63 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     })();
   };
 
+  // --- Fonctions pour les surveillants (Proctors) ---
+  const updateProctorInBackend = async (id: string, data: Partial<Proctor>) => {
+    try {
+      const backend = await syncWithBackend();
+      if (backend?.isBackendAvailable) {
+        await updateProctorApi(id, data);
+      }
+    } catch (err) {
+      console.warn("Mise à jour proctor backend échouée", err);
+    }
+  };
+
+  const addNewProctor = async () => {
+    const newProctor: Proctor = {
+      id: `proctor_${Date.now()}`,
+      name: "Nouveau surveillant",
+      specialty: "",
+      phone: "",
+      email: "",
+      is_active: 1,
+    };
+
+    try {
+      const backend = await syncWithBackend();
+      if (backend?.isBackendAvailable) {
+        const created = await createProctorApi(newProctor);
+        setProctors([...proctors, created]);
+      } else {
+        setProctors([...proctors, newProctor]);
+      }
+    } catch (err) {
+      console.warn("Création proctor échouée", err);
+      setProctors([...proctors, newProctor]);
+    }
+  };
+
+  const deleteProctorItem = async (id: string, name: string) => {
+    if (
+      !confirm(`Êtes-vous sûr de vouloir supprimer le surveillant "${name}" ?`)
+    ) {
+      return;
+    }
+
+    try {
+      const backend = await syncWithBackend();
+      if (backend?.isBackendAvailable) {
+        await deleteProctorApi(id);
+        setProctors(proctors.filter((p) => p.id !== id));
+      } else {
+        setProctors(proctors.filter((p) => p.id !== id));
+      }
+    } catch (err) {
+      console.warn("Suppression proctor échouée", err);
+      setProctors(proctors.filter((p) => p.id !== id));
+    }
+  };
+
   const calculateMinutes = (timeStr: string): number => {
     if (!timeStr) return 0;
     const [h, m] = timeStr.split(":").map(Number);
@@ -570,7 +645,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const lines = content.split(/\r?\n/);
-      
+
       const updatedProfs = [...profs];
       const updatedResidents = [...residents];
       let addedCount = 0;
@@ -595,14 +670,16 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           if (name) {
             const cleanRank = rank?.toUpperCase() === "PR" ? "Pr" : "Dr";
             const existingProf = updatedProfs.find(
-              (p) => p.name.toLowerCase() === name.toLowerCase()
+              (p) => p.name.toLowerCase() === name.toLowerCase(),
             );
 
             if (existingProf) {
               existingProf.rank = cleanRank;
-              existingProf.subjects = subjects.filter((s) => s && s.trim() !== "");
+              existingProf.subjects = subjects.filter(
+                (s) => s && s.trim() !== "",
+              );
               existingProf.responsiblePromo = PROMOS.includes(promo as any)
-                ? promo as Promo
+                ? (promo as Promo)
                 : undefined;
               updatedCount++;
             } else {
@@ -612,7 +689,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 rank: cleanRank,
                 subjects: subjects.filter((s) => s && s.trim() !== ""),
                 responsiblePromo: PROMOS.includes(promo as any)
-                  ? promo as Promo
+                  ? (promo as Promo)
                   : undefined,
                 absences: [],
               });
@@ -623,9 +700,11 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           const [name, level, specialty] = columns;
           if (name) {
             const parsedLevel = parseInt(level);
-            const cleanLevel = [1, 2, 3, 4].includes(parsedLevel) ? parsedLevel as 1|2|3|4 : 1;
+            const cleanLevel = [1, 2, 3, 4].includes(parsedLevel)
+              ? (parsedLevel as 1 | 2 | 3 | 4)
+              : 1;
             const existingRes = updatedResidents.find(
-              (r) => r.name.toLowerCase() === name.toLowerCase()
+              (r) => r.name.toLowerCase() === name.toLowerCase(),
             );
 
             if (existingRes) {
@@ -650,7 +729,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       else if (subTab === "residents") setResidents(updatedResidents);
 
       alert(
-        `✅ Importation terminée !\n\n➕ Ajoutés : ${addedCount}\n🔄 Mis à jour : ${updatedCount}\n\n⚠️ N'oubliez pas de cliquer sur "Synchroniser avec le serveur" pour sauvegarder dans la base de données.`
+        `✅ Importation terminée !\n\n➕ Ajoutés : ${addedCount}\n🔄 Mis à jour : ${updatedCount}\n\n⚠️ N'oubliez pas de cliquer sur "Synchroniser avec le serveur" pour sauvegarder dans la base de données.`,
       );
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
@@ -715,7 +794,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       if (prof) {
         // Eviter les doublons exacts
         const isDuplicate = prof.absences.some(
-          (a) => a.date === date && a.startTime === startTime && a.endTime === endTime,
+          (a) =>
+            a.date === date &&
+            a.startTime === startTime &&
+            a.endTime === endTime,
         );
         if (!isDuplicate)
           updateProf(personId, "absences", [...prof.absences, newAbsence]);
@@ -724,7 +806,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       const res = residents.find((r) => r.id === personId);
       if (res) {
         const isDuplicate = res.absences.some(
-          (a) => a.date === date && a.startTime === startTime && a.endTime === endTime,
+          (a) =>
+            a.date === date &&
+            a.startTime === startTime &&
+            a.endTime === endTime,
         );
         if (!isDuplicate)
           updateResident(personId, "absences", [...res.absences, newAbsence]);
@@ -741,7 +826,12 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             personId,
             "absences",
             prof.absences.filter(
-              (a) => !(a.date === absence.date && a.startTime === absence.startTime && a.endTime === absence.endTime),
+              (a) =>
+                !(
+                  a.date === absence.date &&
+                  a.startTime === absence.startTime &&
+                  a.endTime === absence.endTime
+                ),
             ),
           );
         }
@@ -752,7 +842,12 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             personId,
             "absences",
             res.absences.filter(
-              (a) => !(a.date === absence.date && a.startTime === absence.startTime && a.endTime === absence.endTime),
+              (a) =>
+                !(
+                  a.date === absence.date &&
+                  a.startTime === absence.startTime &&
+                  a.endTime === absence.endTime
+                ),
             ),
           );
         }
@@ -861,7 +956,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               </p>
             </div>
             <button
-              onClick={() => { setEditingAbsenceId(null); setAbsenceIsPartial(false); setAbsenceDateInput(""); setAbsenceStartTime(""); setAbsenceEndTime(""); }}
+              onClick={() => {
+                setEditingAbsenceId(null);
+                setAbsenceIsPartial(false);
+                setAbsenceDateInput("");
+                setAbsenceStartTime("");
+                setAbsenceEndTime("");
+              }}
               className="p-2 hover:bg-slate-200 rounded-full transition-colors"
             >
               <ICONS.Plus className="w-5 h-5 rotate-45 text-slate-400" />
@@ -877,7 +978,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
               {/* Date */}
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Date
+                </span>
                 <input
                   type="date"
                   value={absenceDateInput}
@@ -901,7 +1004,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                   />
                 </div>
                 <span className="text-xs font-bold text-slate-600">
-                  Indisponibilité partielle <span className="text-slate-400 font-normal">(par heure)</span>
+                  Indisponibilité partielle{" "}
+                  <span className="text-slate-400 font-normal">
+                    (par heure)
+                  </span>
                 </span>
               </label>
 
@@ -909,7 +1015,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
               {absenceIsPartial && (
                 <div className="flex gap-3 animate-in slide-in-from-top-2 duration-150">
                   <div className="flex-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Heure début</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Heure début
+                    </span>
                     <input
                       type="time"
                       value={absenceStartTime}
@@ -918,7 +1026,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                     />
                   </div>
                   <div className="flex-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Heure fin</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Heure fin
+                    </span>
                     <input
                       type="time"
                       value={absenceEndTime}
@@ -958,7 +1068,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <ICONS.Calendar className={`w-3.5 h-3.5 ${absence.startTime ? "text-amber-400" : "text-indigo-400"}`} />
+                        <ICONS.Calendar
+                          className={`w-3.5 h-3.5 ${absence.startTime ? "text-amber-400" : "text-indigo-400"}`}
+                        />
                         <div>
                           <span className="text-xs font-bold text-slate-700 block">
                             {formatAbsenceLabel(absence)}
@@ -986,7 +1098,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           {/* Footer */}
           <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
             <button
-              onClick={() => { setEditingAbsenceId(null); setAbsenceIsPartial(false); setAbsenceDateInput(""); setAbsenceStartTime(""); setAbsenceEndTime(""); }}
+              onClick={() => {
+                setEditingAbsenceId(null);
+                setAbsenceIsPartial(false);
+                setAbsenceDateInput("");
+                setAbsenceStartTime("");
+                setAbsenceEndTime("");
+              }}
               className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
             >
               Terminer la gestion
@@ -1025,6 +1143,12 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         >
           Examens
         </button>
+        <button
+          onClick={() => handleTabChange("proctors")}
+          className={`pb-2 px-1 text-sm font-medium transition-colors ${subTab === "proctors" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-slate-500 hover:text-slate-700"}`}
+        >
+          Administration
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1036,7 +1160,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 ? "Gestion des Résidents"
                 : subTab === "rooms"
                   ? "Gestion des Salles"
-                  : "Programmation des Épreuves"}
+                  : subTab === "proctors"
+                    ? "Gestion des Surveillants (Administration)"
+                    : "Programmation des Épreuves"}
           </h2>
 
           <div className="flex items-center gap-2">
@@ -1048,7 +1174,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                     className="flex items-center gap-1.5 p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200"
                   >
                     <ICONS.Trash2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">Supprimer ({selectedIds.length})</span>
+                    <span className="hidden sm:inline">
+                      Supprimer ({selectedIds.length})
+                    </span>
                   </button>
                 )}
                 <button
@@ -1208,9 +1336,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                     <th className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
-                        checked={profs.length > 0 && selectedIds.length === profs.length}
+                        checked={
+                          profs.length > 0 &&
+                          selectedIds.length === profs.length
+                        }
                         onChange={(e) => {
-                          if (e.target.checked) setSelectedIds(profs.map((p) => p.id));
+                          if (e.target.checked)
+                            setSelectedIds(profs.map((p) => p.id));
                           else setSelectedIds([]);
                         }}
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
@@ -1228,9 +1360,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                     <th className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
-                        checked={residents.length > 0 && selectedIds.length === residents.length}
+                        checked={
+                          residents.length > 0 &&
+                          selectedIds.length === residents.length
+                        }
                         onChange={(e) => {
-                          if (e.target.checked) setSelectedIds(residents.map((r) => r.id));
+                          if (e.target.checked)
+                            setSelectedIds(residents.map((r) => r.id));
                           else setSelectedIds([]);
                         }}
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
@@ -1244,6 +1380,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                     <th className="px-6 py-3">Salle</th>
                     <th className="px-6 py-3">P. Cap</th>
                     <th className="px-6 py-3">R. Cap</th>
+                    <th className="px-6 py-3">Admin Cap</th>
                     <th className="px-6 py-3 text-right">Actions</th>
                   </>
                 )}
@@ -1344,7 +1481,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(p.id)}
-                        onChange={(e) => toggleSelection(p.id, e.target.checked)}
+                        onChange={(e) =>
+                          toggleSelection(p.id, e.target.checked)
+                        }
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       />
                     </td>
@@ -1420,7 +1559,9 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(r.id)}
-                        onChange={(e) => toggleSelection(r.id, e.target.checked)}
+                        onChange={(e) =>
+                          toggleSelection(r.id, e.target.checked)
+                        }
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       />
                     </td>
@@ -1478,6 +1619,20 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                             rm.id,
                             "residentCapacity",
                             parseInt(e.target.value),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="px-6 py-3">
+                      <input
+                        type="number"
+                        className="w-12 bg-slate-50 border rounded px-1"
+                        value={rm.proctorCapacity || 0}
+                        onChange={(e) =>
+                          updateRoom(
+                            rm.id,
+                            "proctorCapacity",
+                            parseInt(e.target.value) || 0,
                           )
                         }
                       />
@@ -1578,7 +1733,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const newDuration = Math.max(5, e.duration - 5);
+                                  const newDuration = Math.max(
+                                    5,
+                                    e.duration - 5,
+                                  );
                                   updateExam(e.id, "duration", newDuration);
                                 }}
                                 className="px-1.5 py-0.5 text-[10px] font-black text-indigo-600 hover:bg-indigo-100 transition-colors"
@@ -1678,6 +1836,140 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           </ul>
         </div>
       </div>
+
+      {/* Section Proctors (Administration) */}
+      {subTab === "proctors" && (
+        <>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4">Nom</th>
+                  <th className="px-6 py-4">Spécialité</th>
+                  <th className="px-6 py-4">Téléphone</th>
+                  <th className="px-6 py-4">Email</th>
+                  <th className="px-6 py-4 w-10">Actif</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {proctors.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/50">
+                    <td className="px-6 py-3">
+                      <input
+                        className="bg-transparent font-semibold outline-none w-full"
+                        value={p.name}
+                        onChange={(e) => {
+                          const updated = proctors.map((proc) =>
+                            proc.id === p.id
+                              ? { ...proc, name: e.target.value }
+                              : proc,
+                          );
+                          setProctors(updated);
+                          updateProctorInBackend(p.id, {
+                            name: e.target.value,
+                          });
+                        }}
+                        placeholder="Nom..."
+                      />
+                    </td>
+                    <td className="px-6 py-3">
+                      <input
+                        className="bg-transparent text-xs text-slate-600 italic outline-none w-full"
+                        value={p.specialty || ""}
+                        onChange={(e) => {
+                          const updated = proctors.map((proc) =>
+                            proc.id === p.id
+                              ? { ...proc, specialty: e.target.value }
+                              : proc,
+                          );
+                          setProctors(updated);
+                          updateProctorInBackend(p.id, {
+                            specialty: e.target.value,
+                          });
+                        }}
+                        placeholder="Spécialité..."
+                      />
+                    </td>
+                    <td className="px-6 py-3">
+                      <input
+                        className="bg-transparent text-xs text-slate-600 outline-none w-full"
+                        value={p.phone || ""}
+                        onChange={(e) => {
+                          const updated = proctors.map((proc) =>
+                            proc.id === p.id
+                              ? { ...proc, phone: e.target.value }
+                              : proc,
+                          );
+                          setProctors(updated);
+                          updateProctorInBackend(p.id, {
+                            phone: e.target.value,
+                          });
+                        }}
+                        placeholder="Téléphone..."
+                      />
+                    </td>
+                    <td className="px-6 py-3">
+                      <input
+                        className="bg-transparent text-xs text-slate-600 outline-none w-full"
+                        value={p.email || ""}
+                        onChange={(e) => {
+                          const updated = proctors.map((proc) =>
+                            proc.id === p.id
+                              ? { ...proc, email: e.target.value }
+                              : proc,
+                          );
+                          setProctors(updated);
+                          updateProctorInBackend(p.id, {
+                            email: e.target.value,
+                          });
+                        }}
+                        placeholder="Email..."
+                      />
+                    </td>
+                    <td className="px-6 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={p.is_active === 1}
+                        onChange={(e) => {
+                          const updated = proctors.map((proc) =>
+                            proc.id === p.id
+                              ? { ...proc, is_active: e.target.checked ? 1 : 0 }
+                              : proc,
+                          );
+                          setProctors(updated);
+                          updateProctorInBackend(p.id, {
+                            is_active: e.target.checked ? 1 : 0,
+                          });
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <button
+                        onClick={() => deleteProctorItem(p.id, p.name)}
+                        className="text-slate-300 hover:text-red-500 p-1"
+                      >
+                        <ICONS.Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={addNewProctor}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <ICONS.Plus className="w-5 h-5" />
+              Ajouter un surveillant
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

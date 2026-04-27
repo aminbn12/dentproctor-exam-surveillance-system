@@ -1,5 +1,5 @@
 import React from "react";
-import { Professor, Resident, Room, Exam, Assignment } from "../types";
+import { Professor, Resident, Room, Exam, Assignment, Proctor } from "../types";
 import { ICONS, PROMO_COLORS } from "../constants";
 import {
   suggestProctorsForExamRoom,
@@ -20,6 +20,7 @@ interface PlanningTabProps {
   exams: Exam[];
   assignments: Assignment[];
   setAssignments: (a: Assignment[]) => void;
+  proctors?: Proctor[];
 }
 
 const PlanningTab: React.FC<PlanningTabProps> = ({
@@ -29,6 +30,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
   exams,
   assignments,
   setAssignments,
+  proctors = [],
 }) => {
   const handleAutoFill = () => {
     (async () => {
@@ -91,7 +93,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
   const updateAssignment = (
     examId: string,
     roomId: string,
-    type: "prof" | "resident",
+    type: "prof" | "resident" | "proctor",
     ids: string[],
   ) => {
     (async () => {
@@ -103,7 +105,11 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
       if (existingIndex > -1) {
         newAsgn = {
           ...assignments[existingIndex],
-          [type === "prof" ? "profIds" : "residentIds"]: ids,
+          [type === "prof"
+            ? "profIds"
+            : type === "resident"
+              ? "residentIds"
+              : "proctorIds"]: ids,
         };
       } else {
         newAsgn = {
@@ -111,6 +117,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
           roomId,
           profIds: type === "prof" ? ids : [],
           residentIds: type === "resident" ? ids : [],
+          proctorIds: type === "proctor" ? ids : [],
         };
       }
 
@@ -199,7 +206,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
 
     const periodName = prompt(
       "Entrez un nom ou une période pour cette archive (ex: Session Normale Janvier) :",
-      `Planning du ${new Date().toLocaleDateString("fr-FR")}`
+      `Planning du ${new Date().toLocaleDateString("fr-FR")}`,
     );
 
     if (!periodName) return;
@@ -219,7 +226,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
       alert("✅ Planning archivé avec succès et grille réinitialisée !");
     } catch (err) {
       console.error("Erreur lors de l'archivage :", err);
-      alert("Une erreur est survenue lors de l'archivage. Vérifiez la connexion au serveur.");
+      alert(
+        "Une erreur est survenue lors de l'archivage. Vérifiez la connexion au serveur.",
+      );
     }
   };
 
@@ -248,31 +257,43 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
       </head>
       <body>
         <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Heure</th>
-              <th>Durée</th>
-              <th>Promo</th>
-              <th>Épreuve</th>
-              <th>Salle</th>
-              <th>Enseignants (Surveillants)</th>
-              <th>Résidents (Surveillants)</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+           <thead>
+             <tr>
+               <th>Date</th>
+               <th>Heure Début</th>
+               <th>Heure Fin</th>
+               <th>Durée</th>
+               <th>Promo</th>
+               <th>Épreuve</th>
+               <th>Salle</th>
+               <th>Enseignants (Surveillants)</th>
+               <th>Résidents (Surveillants)</th>
+               <th>Administration (Surveillants)</th>
+             </tr>
+           </thead>
+           <tbody>
+     `;
 
-    const sortedExams = [...exams]
-      .filter((e) => e.date && e.time)
-      .sort(
-        (a, b) =>
-          new Date(`${a.date}T${a.time}`).getTime() -
-          new Date(`${b.date}T${b.time}`).getTime(),
-      );
+     const sortedExams = [...exams]
+       .filter((e) => e.date && e.time)
+       .sort(
+         (a, b) =>
+           new Date(`${a.date}T${a.time}`).getTime() -
+           new Date(`${b.date}T${b.time}`).getTime(),
+       );
 
-    sortedExams.forEach((exam) => {
-      const examRooms = exam.roomIds || [];
+     // Fonction pour calculer l'heure de fin
+     const getEndTime = (time: string, duration: number) => {
+       const [hours, minutes] = time.split(":").map(Number);
+       const totalMinutes = hours * 60 + minutes + duration;
+       const endHours = Math.floor(totalMinutes / 60);
+       const endMinutes = totalMinutes % 60;
+       return `${String(endHours).padStart(2, "0")}:${String(endMinutes).padStart(2, "0")}`;
+     };
+
+     sortedExams.forEach((exam) => {
+       const examRooms = exam.roomIds || [];
+       const endTime = getEndTime(exam.time, exam.duration);
 
       examRooms.forEach((roomId) => {
         const room = rooms.find((r) => r.id === roomId);
@@ -297,27 +318,43 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
             })
             .join(", ") || "";
 
-        const assignedResidents =
-          (assignment?.residentIds ?? [])
-            .map((id) => residents.find((r) => r.id === id))
+         const assignedResidents =
+           (assignment?.residentIds ?? [])
+             .map((id) => residents.find((r) => r.id === id))
+             .filter(Boolean)
+             .map((r) => {
+               const rawName = r?.name || "";
+               // Ajouter "Dr." uniquement si pas déjà présent
+               if (/^(Dr\.?|Doctor)\s+/i.test(rawName)) {
+                 return rawName;
+               }
+               return `Dr. ${rawName}`;
+             })
+             .join(", ") || "";
+
+        const assignedProctors =
+          (assignment?.proctorIds ?? [])
+            .map((id) => proctors.find((p) => p.id === id))
             .filter(Boolean)
-            .map((r) => `Dr. ${r?.name}`)
+            .map((p) => p?.name)
             .join(", ") || "";
 
         const bgColor = promoColors[exam.promo] || "#ffffff";
 
-        tableContent += `
-          <tr>
-            <td class="centered">${exam.date}</td>
-            <td class="centered">${exam.time}</td>
-            <td class="centered">${Math.floor(exam.duration / 60)}h${String(exam.duration % 60).padStart(2, "0")}</td>
-            <td class="centered" style="font-weight: bold; background-color: ${bgColor}">${exam.promo}</td>
-            <td style="font-weight: bold;">${exam.subject}</td>
-            <td class="centered">${room.name}</td>
-            <td>${assignedProfs}</td>
-            <td>${assignedResidents}</td>
-          </tr>
-        `;
+          tableContent += `
+            <tr>
+              <td class="centered">${exam.date}</td>
+              <td class="centered">${exam.time}</td>
+              <td class="centered">${endTime}</td>
+              <td class="centered">${Math.floor(exam.duration / 60)}h${String(exam.duration % 60).padStart(2, "0")}</td>
+              <td class="centered" style="font-weight: bold; background-color: ${bgColor}">${exam.promo}</td>
+              <td style="font-weight: bold; background-color: ${bgColor}">${exam.subject}</td>
+              <td class="centered" style="color: #dc2626; font-weight: bold;">${room.name}</td>
+              <td>${assignedProfs}</td>
+              <td>${assignedResidents}</td>
+              <td>${assignedProctors}</td>
+            </tr>
+          `;
       });
     });
 
@@ -398,7 +435,8 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-normal uppercase tracking-wider block mt-1">
-                    Cap: {room.profCapacity}P + {room.residentCapacity}R
+                    Cap: {room.profCapacity}P + {room.residentCapacity}R +{" "}
+                    {room.profCapacity || 0}A
                   </span>
                 </th>
               ))}
@@ -464,6 +502,11 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                         !asgn?.residentIds.includes(r.id) &&
                         isStaffAvailable(r, exam, exams, assignments),
                     );
+                    const availableProctors = proctors.filter(
+                      (p) =>
+                        !(asgn?.proctorIds || []).includes(p.id) &&
+                        isStaffAvailable(p, exam, exams, assignments),
+                    );
 
                     return (
                       <td
@@ -510,7 +553,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                                     {isResp && (
                                       <ICONS.CheckCircle2 className="w-3 h-3 text-indigo-200 shrink-0" />
                                     )}
-                                    <span className="truncate flex-1">{p?.rank}. {p?.name}</span>
+                                    <span className="truncate flex-1">
+                                      {p?.rank}. {p?.name}
+                                    </span>
                                     <button
                                       onClick={() => {
                                         if (
@@ -579,8 +624,12 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                                     key={rid}
                                     className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium shadow-sm w-full truncate ${r?.level && r.level >= 3 ? "bg-emerald-600 text-white border-emerald-700" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}
                                   >
-                                    <span className="shrink-0">R{r?.level} -</span>
-                                    <span className="truncate flex-1">{r?.name}</span>
+                                    <span className="shrink-0">
+                                      R{r?.level} -
+                                    </span>
+                                    <span className="truncate flex-1">
+                                      {r?.name}
+                                    </span>
                                     <span className="text-[8px] opacity-70 shrink-0">
                                       ({r?.specialty.substring(0, 4)}.)
                                     </span>
@@ -631,6 +680,85 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                               ))}
                             </select>
                           </div>
+
+                          {/* Administration / Surveillants section */}
+                          {(room.profCapacity || 0) > 0 && (
+                            <div>
+                              <div className="flex justify-between items-center mb-1.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                  Administration
+                                </label>
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 rounded ${(asgn?.proctorIds || []).length === (room.profCapacity || 0) ? "text-emerald-600 bg-emerald-50" : "text-amber-600 bg-amber-50"}`}
+                                >
+                                  {(asgn?.proctorIds || []).length} /{" "}
+                                  {room.profCapacity || 0}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {(asgn?.proctorIds || []).map((pid) => {
+                                  const p = proctors.find((x) => x.id === pid);
+                                  return (
+                                    <span
+                                      key={pid}
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium shadow-sm w-full truncate bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    >
+                                      <span className="truncate flex-1">
+                                        {p?.name}
+                                      </span>
+                                      <button
+                                        onClick={() => {
+                                          if (
+                                            window.confirm(
+                                              `Retirer ${p?.name} ?`,
+                                            )
+                                          )
+                                            updateAssignment(
+                                              exam.id,
+                                              room.id,
+                                              "proctor",
+                                              (asgn.proctorIds || []).filter(
+                                                (id) => id !== pid,
+                                              ),
+                                            );
+                                        }}
+                                        className="ml-1 opacity-60 hover:opacity-100 font-bold"
+                                      >
+                                        &times;
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <select
+                                className="w-full text-[10px] p-1.5 border border-slate-200 rounded-md bg-white outline-none disabled:opacity-50"
+                                onChange={(e) =>
+                                  e.target.value &&
+                                  updateAssignment(
+                                    exam.id,
+                                    room.id,
+                                    "proctor",
+                                    [
+                                      ...(asgn?.proctorIds || []),
+                                      e.target.value,
+                                    ],
+                                  )
+                                }
+                                value=""
+                                disabled={
+                                  (asgn?.proctorIds || []).length >=
+                                  (room.profCapacity || 0)
+                                }
+                              >
+                                <option value="">+ Affecter Admin</option>
+                                {availableProctors.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       </td>
                     );

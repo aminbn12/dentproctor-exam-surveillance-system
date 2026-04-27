@@ -25,6 +25,12 @@ class Exam(Base):
 
     # Relations
     assignments = relationship("Assignment", back_populates="exam", cascade="all, delete-orphan")
+    rooms = relationship("Room", secondary=exam_room, back_populates="exams")
 
     def __repr__(self):
         return f"<Exam {self.subject} ({self.date} {self.time})>"
+
+    @property
+    def room_ids(self) -> list:
+        """Retourne la liste des IDs de salles associées (pour l'API)"""
+        return [r.id for r in self.rooms]

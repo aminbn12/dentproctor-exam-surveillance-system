@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   Copy,
+  UserPlus,
 } from "lucide-react";
 
 export const INITIAL_PROFESSORS: Professor[] = [
@@ -366,6 +367,7 @@ export const ICONS = {
   Eye,
   EyeOff,
   Copy,
+  UserPlus,
 };
 
 export const PROMOS: Promo[] = [

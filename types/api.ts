@@ -8,8 +8,9 @@ export interface AuthResponse {
     username: string;
     email: string;
     full_name: string;
-    role: 'ADMIN' | 'PROCTOR';
-    staff_type?: 'prof' | 'resident';
+    role: "ADMIN" | "PROCTOR" | "SUPER_ADMIN";
+    staff_type?: "prof" | "resident";
+    department?: string;
   };
 }
 

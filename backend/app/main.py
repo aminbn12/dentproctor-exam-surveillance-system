@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 import os
 from app.config import settings
 from app.database import create_tables, get_db
-from app.routes import auth, professors, residents, rooms, exams, assignments, history
+from app.routes import auth, professors, residents, rooms, exams, assignments, history, admin, config_changes, proctors
 
 # Créer les tables au démarrage
 create_tables()
@@ -21,7 +21,7 @@ app = FastAPI(
 # Configuration CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,17 +49,23 @@ app.include_router(auth.router)
 app.include_router(professors.router)
 app.include_router(residents.router)
 app.include_router(rooms.router)
+app.include_router(proctors.router)
 app.include_router(exams.router)
 app.include_router(assignments.router)
 app.include_router(history.router)
+app.include_router(admin.router)
+app.include_router(config_changes.router)
 
 # Gestionnaire d'erreurs globaux
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"❌ Erreur interne du serveur: {str(exc)}"}
-    )
+    # Logger l'erreur (à faire plus tard avec logging)
+    if settings.DEBUG:
+        content = {"detail": f"❌ Erreur interne du serveur: {str(exc)}"}
+    else:
+        # En production, ne pas exposer les détails internes
+        content = {"detail": "❌ Erreur interne du serveur"}
+    return JSONResponse(status_code=500, content=content)
 
 if __name__ == "__main__":
     import uvicorn

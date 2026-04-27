@@ -12,7 +12,8 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(150), nullable=True)
-    role = Column(Enum('ADMIN', 'PROCTOR', name='user_role'), nullable=False, default='PROCTOR')
+    role = Column(Enum('ADMIN', 'PROCTOR', 'SUPER_ADMIN', name='user_role'), nullable=False, default='PROCTOR')
+    department = Column(String(150), nullable=True)  # Department field for admins
     staff_type = Column(Enum('prof', 'resident', name='staff_type'), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

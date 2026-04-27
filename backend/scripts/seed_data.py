@@ -36,13 +36,14 @@ def create_test_data():
         if existing_users > 0:
             print(f"  {existing_users} utilisateurs deja existants, skip...")
         else:
-            # Admin
+            # Admin (SUPER_ADMIN - highest privilege)
             admin_user = User(
             username="admin",
             email="admin@dentproctor.tn",
             hashed_password=hash_password("admin123"),
-            full_name="Administrateur",
-            role="ADMIN",
+            full_name="Administrateur Principal",
+            role="SUPER_ADMIN",
+            department="Direction",
             is_active=True
         )
         

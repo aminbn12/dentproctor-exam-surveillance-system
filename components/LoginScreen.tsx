@@ -52,8 +52,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       onLogin({
         id: data.user.id,
         name: data.user.full_name || data.user.username,
-        role: data.user.role as "ADMIN" | "PROCTOR",
+        role: data.user.role as "ADMIN" | "PROCTOR" | "SUPER_ADMIN",
         type: data.user.staff_type as "prof" | "resident",
+        department: data.user.department,
       });
     } catch (err: any) {
       setError(err.message || "Erreur de connexion au serveur Python.");

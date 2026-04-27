@@ -21,7 +21,7 @@ if not exist "venv\" (
 )
 
 REM Activer venv
-call venv\Scripts\activate.bat
+call "%~dp0venv\Scripts\activate.bat"
 
 REM Vérifier si requirements sont installés
 pip show fastapi > nul 2>&1
@@ -35,11 +35,11 @@ if errorlevel 1 (
     )
 )
 
-REM Vérifier si admin existe
-python -c "from app.database import SessionLocal; from app.models.user import User; db = SessionLocal(); admin = db.query(User).filter(User.role == 'ADMIN').first(); exit(0 if admin else 1)" 2>nul
+REM Vérifier si admin existe (par username)
+python -c "from app.database import SessionLocal; from app.models.user import User; db = SessionLocal(); admin = db.query(User).filter(User.username == 'admin').first(); exit(0 if admin else 1)" 2>nul
 if errorlevel 1 (
     echo 👤 Création de l'administrateur initial...
-    python scripts/create_admin.py
+    python -m scripts.create_admin
 )
 
 echo.
@@ -54,6 +54,6 @@ echo Appuie sur Ctrl+C pour arrêter
 echo.
 
 REM Lancer le serveur
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8100
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8100
 
 pause
