@@ -1,13 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import os
 from app.config import settings
 from app.database import create_tables, get_db
 from app.routes import auth, professors, residents, rooms, exams, assignments, history, admin, config_changes, proctors
 
-# Créer les tables au démarrage
-create_tables()
+# Créer les tables UNIQUEMENT en développement (Alembic gère la production)
+if settings.ENVIRONMENT == "development":
+    create_tables()
 
 # Initialiser l'app FastAPI
 app = FastAPI(
@@ -55,6 +57,13 @@ app.include_router(assignments.router)
 app.include_router(history.router)
 app.include_router(admin.router)
 app.include_router(config_changes.router)
+
+# En production, servir les fichiers statiques du frontend (build Vite)
+if settings.ENVIRONMENT == "production":
+    # Le chemin /app/dist/ est créé par le Dockerfile (copie du build frontend)
+    frontend_path = "/app/dist"
+    if os.path.exists(frontend_path):
+        app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 # Gestionnaire d'erreurs globaux
 @app.exception_handler(Exception)
