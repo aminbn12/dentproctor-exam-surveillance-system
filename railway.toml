@@ -2,7 +2,7 @@
 # Documentation: https://railway.app/docs/deployment/configuration
 
 [build]
-builder = "docker"
+builder = "DOCKERFILE"
 dockerfile = "Dockerfile"
 
 [deploy]
