@@ -1,23 +1,11 @@
 # Railway Configuration File
-# Documentation: https://railway.app/docs/deployment/configuration
+# Documentation: https://docs.railway.com/config-as-code/reference
 
 [build]
 builder = "DOCKERFILE"
-dockerfile = "Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-
-[env]
-ENVIRONMENT = "production"
-DEBUG = "false"
-
-# Database (Railway will inject DATABASE_URL automatically if you add a Postgres plugin)
-# Use SQLite file for simple deployment or connect to external DB
-# DATABASE_URL = "sqlite:///dentproctor.db"
-
-# Security (SET THESE IN RAILWAY UI - DO NOT COMMIT REAL VALUES)
-# SECRET_KEY = "your-secret-key-change-in-production"
-# CORS_ORIGINS = "https://yourdomain.com"
