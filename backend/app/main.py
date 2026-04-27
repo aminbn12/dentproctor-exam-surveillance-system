@@ -10,6 +10,13 @@ from app.routes import auth, professors, residents, rooms, exams, assignments, h
 # Créer les tables UNIQUEMENT en développement (Alembic gère la production)
 if settings.ENVIRONMENT == "development":
     create_tables()
+else:
+    # En production, exécuter les migrations Alembic automatiquement
+    try:
+        import subprocess
+        subprocess.run(["python", "-m", "alembic", "upgrade", "head"], check=True)
+    except Exception as e:
+        print(f"⚠️  Warning: Alembic migration failed: {e}")
 
 # Initialiser l'app FastAPI
 app = FastAPI(
