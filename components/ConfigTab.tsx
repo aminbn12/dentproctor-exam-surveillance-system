@@ -62,6 +62,10 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
   const [absenceEndTime, setAbsenceEndTime] = useState("");
   const [absenceDateInput, setAbsenceDateInput] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [editingSubjectsId, setEditingSubjectsId] = useState<string | null>(
+    null,
+  );
+  const [newSubjectInput, setNewSubjectInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importJsonRef = useRef<HTMLInputElement>(null);
 
@@ -106,6 +110,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             name: prof.name,
             rank: prof.rank,
             responsiblePromo: prof.responsiblePromo,
+            subjects: prof.subjects,
           });
           successCount++;
         } catch (err: any) {
@@ -118,6 +123,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 name: prof.name,
                 rank: prof.rank,
                 responsiblePromo: prof.responsiblePromo,
+                subjects: prof.subjects,
               });
               successCount++;
             } catch (updateErr: any) {
@@ -241,6 +247,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                   name: prof.name,
                   rank: prof.rank,
                   responsiblePromo: prof.responsiblePromo,
+                  subjects: prof.subjects || [],
                 });
                 successCount++;
               } catch (err: any) {
@@ -254,6 +261,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       name: prof.name,
                       rank: prof.rank,
                       responsiblePromo: prof.responsiblePromo,
+                      subjects: prof.subjects || [],
                     });
                     successCount++;
                   } catch {
@@ -855,6 +863,74 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     }
   };
 
+  const addSubject = (profId: string, subject: string) => {
+    if (!subject.trim()) return;
+    const updatedProfs = profs.map((p) => {
+      if (p.id === profId) {
+        // Éviter les doublons
+        if (!p.subjects.includes(subject)) {
+          return { ...p, subjects: [...p.subjects, subject] };
+        }
+      }
+      return p;
+    });
+    setProfs(updatedProfs);
+    setNewSubjectInput("");
+
+    // Synchroniser avec le backend
+    (async () => {
+      try {
+        const backend = await syncWithBackend();
+        if (backend?.isBackendAvailable) {
+          const prof = updatedProfs.find((p) => p.id === profId);
+          if (prof) {
+            await updateProfessorApi(profId, {
+              name: prof.name,
+              rank: prof.rank,
+              responsiblePromo: prof.responsiblePromo,
+              subjects: prof.subjects,
+            } as any);
+          }
+        }
+      } catch (err) {
+        console.warn("Synchronisation matière échouée", err);
+      }
+    })();
+  };
+
+  const removeSubject = (profId: string, subject: string) => {
+    const updatedProfs = profs.map((p) => {
+      if (p.id === profId) {
+        return {
+          ...p,
+          subjects: p.subjects.filter((s) => s !== subject),
+        };
+      }
+      return p;
+    });
+    setProfs(updatedProfs);
+
+    // Synchroniser avec le backend
+    (async () => {
+      try {
+        const backend = await syncWithBackend();
+        if (backend?.isBackendAvailable) {
+          const prof = updatedProfs.find((p) => p.id === profId);
+          if (prof) {
+            await updateProfessorApi(profId, {
+              name: prof.name,
+              rank: prof.rank,
+              responsiblePromo: prof.responsiblePromo,
+              subjects: prof.subjects,
+            } as any);
+          }
+        }
+      } catch (err) {
+        console.warn("Synchronisation matière échouée", err);
+      }
+    })();
+  };
+
   const formatAbsenceLabel = (absence: Absence): string => {
     const dateStr = new Date(absence.date).toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -1115,9 +1191,125 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     );
   };
 
+  const SubjectsModal = () => {
+    const prof = profs.find((p) => p.id === editingSubjectsId);
+
+    if (!prof) return null;
+
+    const handleAddSubject = () => {
+      addSubject(prof.id, newSubjectInput);
+    };
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-emerald-50/30">
+            <div>
+              <h3 className="font-black text-emerald-950 uppercase tracking-tight">
+                Gestion des Matières
+              </h3>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                {prof.name} ({prof.rank})
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingSubjectsId(null);
+                setNewSubjectInput("");
+              }}
+              className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+            >
+              <ICONS.Plus className="w-5 h-5 rotate-45 text-slate-400" />
+            </button>
+          </div>
+
+          {/* Form */}
+          <div className="p-6 space-y-4">
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">
+                Ajouter une matière
+              </label>
+
+              {/* Input */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSubjectInput}
+                  onChange={(e) => setNewSubjectInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleAddSubject();
+                    }
+                  }}
+                  placeholder="Anatomie, Biologie, etc..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+                <button
+                  onClick={handleAddSubject}
+                  className="bg-emerald-600 text-white px-4 py-2.5 rounded-lg text-sm font-black hover:bg-emerald-700 transition-all active:scale-95"
+                >
+                  + AJOUTER
+                </button>
+              </div>
+            </div>
+
+            {/* Liste des matières */}
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Matières configurées ({prof.subjects.length})
+              </label>
+              <div className="max-h-52 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                {prof.subjects.length === 0 ? (
+                  <div className="text-center py-6 text-slate-300 italic text-xs">
+                    Aucune matière enregistrée
+                  </div>
+                ) : (
+                  prof.subjects.map((subject, idx) => (
+                    <div
+                      key={`${subject}-${idx}`}
+                      className="flex justify-between items-center p-3 rounded-lg border border-emerald-100 bg-emerald-50 group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-emerald-700">
+                          {subject}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeSubject(prof.id, subject)}
+                        className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors"
+                        title="Supprimer cette matière"
+                      >
+                        <ICONS.Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+            <button
+              onClick={() => {
+                setEditingSubjectsId(null);
+                setNewSubjectInput("");
+              }}
+              className="text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {editingAbsenceId && <AbsenceModal />}
+      {editingSubjectsId && <SubjectsModal />}
       <div className="flex border-b border-slate-200 gap-6">
         <button
           onClick={() => handleTabChange("profs")}
@@ -1452,21 +1644,15 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       </select>
                     </td>
                     <td className="px-6 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {p.subjects.map((s, idx) => (
-                          <span
-                            key={idx}
-                            className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-indigo-100"
-                          >
-                            {s}
-                          </span>
-                        ))}
-                        {p.subjects.length === 0 && (
-                          <span className="text-slate-300 text-[10px]">
-                            Aucune matière
-                          </span>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => setEditingSubjectsId(p.id)}
+                        className="flex items-center gap-1.5 text-[10px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded transition-all"
+                      >
+                        <ICONS.BookOpen className="w-3 h-3" />{" "}
+                        {p.subjects.length > 0
+                          ? `${p.subjects.length} MATIÈRE(S)`
+                          : "AJOUTER"}
+                      </button>
                     </td>
                     <td className="px-6 py-3">
                       <button

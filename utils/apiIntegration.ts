@@ -102,6 +102,7 @@ export const createProfessor = async (prof: Partial<Professor>) => {
     name: prof.name,
     rank: prof.rank,
     responsible_promo: (prof as any).responsiblePromo || null,
+    subjects: prof.subjects || [],
   };
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/professors`, {
@@ -120,6 +121,7 @@ export const updateProfessorApi = async (
   if (data.rank !== undefined) payload.rank = data.rank;
   if ((data as any).responsiblePromo !== undefined)
     payload.responsible_promo = (data as any).responsiblePromo;
+  if (data.subjects !== undefined) payload.subjects = data.subjects;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/professors/${id}`, {
     method: "PUT",

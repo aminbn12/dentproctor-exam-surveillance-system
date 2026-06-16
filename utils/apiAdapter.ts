@@ -6,6 +6,7 @@ export interface BackendProfessor {
   name: string;
   rank: "Pr" | "Dr";
   responsible_promo?: string;
+  subjects?: string[];
   user_id: string;
 }
 
@@ -47,7 +48,7 @@ export const adaptProfessor = (backend: BackendProfessor): Professor => ({
   name: backend.name,
   rank: backend.rank,
   responsiblePromo: backend.responsible_promo || "",
-  subjects: [],
+  subjects: backend.subjects || [],
   absences: [],
 });
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, ForeignKey, DateTime, Table
+from sqlalchemy import Column, String, Enum, ForeignKey, DateTime, Table, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -12,6 +12,7 @@ class Professor(Base):
     name = Column(String(150), nullable=False, index=True)
     rank = Column(Enum('Pr', 'Dr', name='prof_rank'), nullable=False)
     responsible_promo = Column(String(20), nullable=True)
+    subjects = Column(JSON, nullable=False, default=list)  # Liste des matières
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
