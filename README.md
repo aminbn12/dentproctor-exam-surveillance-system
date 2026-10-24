@@ -179,24 +179,25 @@ dentproctor/
 
 ### Pour Commencer
 
-- 🚀 **[LIRE_CECI_D_ABORD.md](./LIRE_CECI_D_ABORD.md)** - Quick start (5 min)
-- 📖 **[RESUME_IMPLEMENTATION.md](./RESUME_IMPLEMENTATION.md)** - Vue d'ensemble
+- 🚀 **[LIRE_CECI_D_ABORD.md](./docs/LIRE_CECI_D_ABORD.md)** - Quick start (5 min)
+- 📖 **[RESUME_IMPLEMENTATION.md](./docs/RESUME_IMPLEMENTATION.md)** - Vue d'ensemble
 
 ### Pour Utilisateurs
 
-- 👤 **[MATIERES_CONFIG.md](./MATIERES_CONFIG.md)** - Configuration des matières
-- 📋 **[GUIDE_AMELIORATIONS.md](./GUIDE_AMELIORATIONS.md)** - Guide utilisateur
+- 👤 **[MATIERES_CONFIG.md](./docs/MATIERES_CONFIG.md)** - Configuration des matières
+- 📋 **[GUIDE_AMELIORATIONS.md](./docs/GUIDE_AMELIORATIONS.md)** - Guide utilisateur
 
 ### Pour Administrateurs
 
-- 🔧 **[DEPLOYMENT_MATIERES.md](./DEPLOYMENT_MATIERES.md)** - Déploiement
-- 📊 **[PROJECT_TRACKER.md](./PROJECT_TRACKER.md)** - Suivi du projet
+- 🔧 **[DEPLOYMENT_MATIERES.md](./docs/DEPLOYMENT_MATIERES.md)** - Déploiement
+- 📊 **[PROJECT_TRACKER.md](./docs/PROJECT_TRACKER.md)** - Suivi du projet
 
-### Pour Développeurs
+### Pour Développeurs & Agents IA
 
-- 💻 **[TECHNICAL_MATIERES.md](./TECHNICAL_MATIERES.md)** - Architecture technique
-- 📋 **[CHANGELOG_MATIERES.md](./CHANGELOG_MATIERES.md)** - Historique des changements
-- 🗂️ **[INDEX_DOCUMENTATION.md](./INDEX_DOCUMENTATION.md)** - Index complet
+- 🤖 **[AGENT.md](./AGENT.md)** - Guide pour Développeurs & Assistants IA
+- 💻 **[TECHNICAL_MATIERES.md](./docs/TECHNICAL_MATIERES.md)** - Architecture technique
+- 📋 **[CHANGELOG_MATIERES.md](./docs/CHANGELOG_MATIERES.md)** - Historique des changements
+- 🗂️ **[INDEX_DOCUMENTATION.md](./docs/INDEX_DOCUMENTATION.md)** - Index complet
 
 ---
 
@@ -369,13 +370,14 @@ curl http://localhost:8000/health
 
 ### Documentation
 
-- 📖 Consultez la [documentation complète](./INDEX_DOCUMENTATION.md)
-- 🆘 Voir la [section dépannage](./LIRE_CECI_D_ABORD.md#-problème)
+- 🤖 Guide IA & Développeur : **[AGENT.md](./AGENT.md)**
+- 📖 Consultez la [documentation complète](./docs/INDEX_DOCUMENTATION.md)
+- 🆘 Voir la [section dépannage](./docs/LIRE_CECI_D_ABORD.md#-problème)
 
 ### Signaler un bug
 
 1. Vérifiez la documentation
-2. Consultez les [problèmes connus](./PROJECT_TRACKER.md)
+2. Consultez les [problèmes connus](./docs/PROJECT_TRACKER.md)
 3. Créez une issue avec les détails
 
 ### Contribuer
