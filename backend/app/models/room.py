@@ -13,7 +13,11 @@ class Room(Base):
     name = Column(String(100), nullable=False, unique=True, index=True)
     prof_capacity = Column(Integer, nullable=False)
     resident_capacity = Column(Integer, nullable=False)
-    proctor_capacity = Column(Integer, nullable=False, default=0)  # Capacité administration
+    proctor_capacity = Column(Integer, nullable=False, default=0)  # Capacité administration totale
+    is_active = Column(Integer, nullable=False, default=1)  # 1: Actif, 0: Inactif
+    admin_capacity = Column(Integer, nullable=False, default=1)  # Administration
+    it_capacity = Column(Integer, nullable=False, default=0)  # IT / EVALBOX
+    zone_leader_capacity = Column(Integer, nullable=False, default=0)  # Resp. de Zones
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

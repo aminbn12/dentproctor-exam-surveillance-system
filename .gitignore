@@ -38,3 +38,6 @@ venv/
 *.db
 backend/*.db
 .env
+scratch/
+Planning_Controles_Continus_S1_2026.xlsx
+Template_Planning_Examens.xlsx

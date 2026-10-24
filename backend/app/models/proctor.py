@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Table, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Table, Boolean, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -22,6 +22,7 @@ class Proctor(Base):
     phone = Column(String(20), nullable=True)  # Phone number
     email = Column(String(100), nullable=True)  # Email
     is_active = Column(Boolean, default=True)  # Active status
+    absences = Column(JSON, nullable=True, default=list)  # Liste des absences/indispos
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

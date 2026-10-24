@@ -15,7 +15,9 @@ class ExamUpdate(BaseModel):
     date: Optional[str] = None
     time: Optional[str] = None
     duration: Optional[int] = None
+    promo: Optional[str] = None
     subject: Optional[str] = None
+    room_ids: Optional[List[str]] = None
 
 class ExamResponse(ExamBase):
     id: str

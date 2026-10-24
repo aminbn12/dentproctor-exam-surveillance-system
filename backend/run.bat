@@ -1,5 +1,6 @@
 @echo off
 REM Script de démarrage du backend DentProctor pour Windows
+cd /d "%~dp0"
 
 echo.
 echo ========================================

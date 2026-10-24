@@ -20,10 +20,16 @@ router = APIRouter(prefix="/api/proctors", tags=["proctors"])
 async def get_proctors(
     db: Session = Depends(get_db),
     skip: int = 0,
-    limit: int = 1000
+    limit: int = 1000,
+    active_only: Optional[bool] = None
 ):
-    """Récupérer tous les surveillants"""
-    return db.query(Proctor).filter(Proctor.is_active == True).offset(skip).limit(limit).all()
+    """Récupérer tous les surveillants (ou seulement actifs si active_only=True)"""
+    query = db.query(Proctor)
+    if active_only is True:
+        query = query.filter(Proctor.is_active == True)
+    elif active_only is False:
+        query = query.filter(Proctor.is_active == False)
+    return query.offset(skip).limit(limit).all()
 
 
 @router.post("", response_model=ProctorResponse)

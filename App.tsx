@@ -39,7 +39,14 @@ import {
 } from "./utils/apiAdapter";
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<UserSession | null>(null);
+  const [user, setUser] = useState<UserSession | null>(() => {
+    try {
+      const savedUser = localStorage.getItem("user_session");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
   const [activeTab, setActiveTab] = useState<AppTab>("planning");
   const [isBackendAvailable, setIsBackendAvailable] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -78,7 +85,11 @@ const App: React.FC = () => {
   const getInitialExams = (): Exam[] => {
     const saved = loadFromLocalStorage();
     if (saved?.exams && saved.exams.length > 0) {
-      return saved.exams;
+      // Si ce sont les anciens examens de test 2025, remplacer par les vrais examens
+      const hasOldDummyExams = saved.exams.some((e) => e.date === "2025-01-02");
+      if (!hasOldDummyExams) {
+        return saved.exams;
+      }
     }
     return INITIAL_EXAMS;
   };
@@ -92,7 +103,11 @@ const App: React.FC = () => {
     return saved?.assignments || [];
   });
   const [proctors, setProctors] = useState<Proctor[]>(() => {
-    return []; // Initialize empty, will load from backend if available
+    const saved = loadFromLocalStorage();
+    return (saved?.proctors || []).map((p: Proctor) => ({
+      ...p,
+      absences: p.absences || [],
+    }));
   });
 
   // Sauvegarder automatiquement quand les données changent (VERS localStorage)
@@ -102,9 +117,10 @@ const App: React.FC = () => {
       residents: residents.length,
       rooms: rooms.length,
       exams: exams.length,
+      proctors: proctors.length,
     });
-    saveToLocalStorage(profs, residents, rooms, exams, assignments);
-  }, [profs, residents, rooms, exams, assignments]);
+    saveToLocalStorage(profs, residents, rooms, exams, assignments, proctors);
+  }, [profs, residents, rooms, exams, assignments, proctors]);
 
   // charger les données depuis le backend SEULEMENT si localStorage est vide
   // Le backend sert de sauvegarde secondaire, mais on ne remplace pas les données locales
@@ -122,88 +138,76 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Charger les données depuis le backend SEULEMENT si localStorage est vide (fallback)
+  // Charger les données fraîches depuis la base de données backend
   const loadDataFromBackend = async (apiUrl: string) => {
     setIsLoadingData(true);
     try {
       const headers = getFetchHeaders();
-      const saved = loadFromLocalStorage();
 
-      // Charger les professors - SEULEMENT si localStorage est vide
+      // 1. Charger les professeurs depuis la BDD
       const profsRes = await fetch(`${apiUrl}/professors`, { headers });
       if (profsRes.ok) {
         const backendProfs: BackendProfessor[] = await profsRes.json();
-        // Utiliser backend seulement si localStorage est vide
-        if (
-          backendProfs &&
-          backendProfs.length > 0 &&
-          (!saved?.profs || saved.profs.length === 0)
-        ) {
+        if (backendProfs && backendProfs.length > 0) {
           setProfs(backendProfs.map(adaptProfessor));
         }
       }
 
-      // Charger les résidents - SEULEMENT si localStorage est vide
+      // 2. Charger les résidents depuis la BDD
       const residentsRes = await fetch(`${apiUrl}/residents`, { headers });
       if (residentsRes.ok) {
         const backendResidents: BackendResident[] = await residentsRes.json();
-        if (
-          backendResidents &&
-          backendResidents.length > 0 &&
-          (!saved?.residents || saved.residents.length === 0)
-        ) {
+        if (backendResidents && backendResidents.length > 0) {
           setResidents(backendResidents.map(adaptResident));
         }
       }
 
-      // Charger les salles - SEULEMENT si localStorage est vide
+      // 3. Charger les salles depuis la BDD
+      let loadedRooms: Room[] = rooms;
       const roomsRes = await fetch(`${apiUrl}/rooms`, { headers });
       if (roomsRes.ok) {
         const backendRooms: BackendRoom[] = await roomsRes.json();
-        if (
-          backendRooms &&
-          backendRooms.length > 0 &&
-          (!saved?.rooms || saved.rooms.length === 0)
-        ) {
-          setRooms(backendRooms.map(adaptRoom));
+        if (backendRooms && backendRooms.length > 0) {
+          loadedRooms = backendRooms.map(adaptRoom);
+          setRooms(loadedRooms);
         }
       }
 
-      // Charger les examens - SEULEMENT si localStorage est vide
-      const examsRes = await fetch(`${apiUrl}/exams`, { headers });
-      if (examsRes.ok) {
-        const backendExams: BackendExam[] = await examsRes.json();
-        if (
-          backendExams &&
-          backendExams.length > 0 &&
-          (!saved?.exams || saved.exams.length === 0)
-        ) {
-          setExams(backendExams.map(adaptExam));
-        }
-      }
-
-      // Charger les surveillants (proctors) - SEULEMENT si vide
+      // 4. Charger les surveillants (Administration / IT / Zones)
       const proctorsRes = await fetch(`${apiUrl}/proctors`, { headers });
       if (proctorsRes.ok) {
         const backendProctors = await proctorsRes.json();
         if (backendProctors && backendProctors.length > 0) {
-          setProctors(backendProctors);
+          const localProctors = loadFromLocalStorage()?.proctors || [];
+          const localMap = new Map(localProctors.map((p) => [p.id, p.absences || []]));
+          setProctors(
+            backendProctors.map((bp: any) => ({
+              ...bp,
+              absences:
+                Array.isArray(bp.absences) && bp.absences.length > 0
+                  ? bp.absences
+                  : localMap.get(bp.id) || [],
+            })),
+          );
         }
       }
 
-      // Charger les assignments - SEULEMENT si localStorage est vide
+      // 5. Charger les examens depuis la BDD
+      const examsRes = await fetch(`${apiUrl}/exams`, { headers });
+      if (examsRes.ok) {
+        const backendExams: BackendExam[] = await examsRes.json();
+        if (backendExams && backendExams.length > 0) {
+          setExams(backendExams.map(adaptExam));
+        }
+      }
+
+      // 6. Charger les affectations (assignments) depuis la BDD
       const assignmentsRes = await fetch(`${apiUrl}/assignments`, { headers });
       if (assignmentsRes.ok) {
-        const backendAssignments: BackendAssignment[] =
-          await assignmentsRes.json();
-        // Utiliser backend seulement si localStorage est vide
-        if (
-          backendAssignments &&
-          backendAssignments.length > 0 &&
-          (!saved?.assignments || saved.assignments.length === 0)
-        ) {
+        const backendAssignments: BackendAssignment[] = await assignmentsRes.json();
+        if (backendAssignments && backendAssignments.length > 0) {
           const roomsMap = new Map<string, Room>(
-            rooms.map((r: Room) => [r.id, r]),
+            loadedRooms.map((r: Room) => [r.id, r]),
           );
           setAssignments(
             backendAssignments.map((a) => adaptAssignment(a, roomsMap)),
@@ -212,7 +216,6 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.warn("Erreur lors du chargement des données du backend:", error);
-      // Garder les données locales en cas d'erreur
     } finally {
       setIsLoadingData(false);
     }
@@ -227,14 +230,24 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  const handleLogin = (newUser: UserSession) => {
+    setUser(newUser);
+    try {
+      localStorage.setItem("user_session", JSON.stringify(newUser));
+    } catch (err) {
+      console.warn("Erreur stockage session:", err);
+    }
+  };
+
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem("user_session");
     localStorage.removeItem("access_token");
   };
 
   if (!user) {
     return (
-      <LoginScreen onLogin={setUser} profs={profs} residents={residents} />
+      <LoginScreen onLogin={handleLogin} profs={profs} residents={residents} />
     );
   }
 
@@ -350,6 +363,7 @@ const App: React.FC = () => {
             assignments={assignments}
             setAssignments={setAssignments}
             proctors={proctors}
+            setExams={setExams}
           />
         )}
         {activeTab === "history" && (

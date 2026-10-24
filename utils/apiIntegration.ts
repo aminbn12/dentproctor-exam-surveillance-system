@@ -102,6 +102,14 @@ export const createProfessor = async (prof: Partial<Professor>) => {
     name: prof.name,
     rank: prof.rank,
     responsible_promo: (prof as any).responsiblePromo || null,
+    mandatory_promo_presence:
+      prof.mandatoryPromoPresence !== undefined
+        ? prof.mandatoryPromoPresence
+        : true,
+    room_alternation:
+      prof.roomAlternation !== undefined
+        ? prof.roomAlternation
+        : true,
     subjects: prof.subjects || [],
   };
   const headers = getFetchHeaders();
@@ -121,6 +129,10 @@ export const updateProfessorApi = async (
   if (data.rank !== undefined) payload.rank = data.rank;
   if ((data as any).responsiblePromo !== undefined)
     payload.responsible_promo = (data as any).responsiblePromo;
+  if (data.mandatoryPromoPresence !== undefined)
+    payload.mandatory_promo_presence = data.mandatoryPromoPresence;
+  if (data.roomAlternation !== undefined)
+    payload.room_alternation = data.roomAlternation;
   if (data.subjects !== undefined) payload.subjects = data.subjects;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/professors/${id}`, {
@@ -177,10 +189,23 @@ export const deleteResidentApi = async (id: string) => {
 };
 
 export const createRoomApi = async (room: Partial<Room>) => {
+  const adminCap = room.adminCapacity !== undefined ? room.adminCapacity : 1;
+  const itCap = room.itCapacity !== undefined ? room.itCapacity : 0;
+  const zoneCap = room.zoneLeaderCapacity !== undefined ? room.zoneLeaderCapacity : 0;
+  const totalProctor =
+    room.proctorCapacity !== undefined
+      ? room.proctorCapacity
+      : adminCap + itCap + zoneCap;
+
   const payload = {
     name: room.name,
     prof_capacity: (room as any).profCapacity,
     resident_capacity: (room as any).residentCapacity,
+    proctor_capacity: totalProctor,
+    is_active: room.isActive === false ? 0 : 1,
+    admin_capacity: adminCap,
+    it_capacity: itCap,
+    zone_leader_capacity: zoneCap,
   };
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/rooms`, {
@@ -197,6 +222,16 @@ export const updateRoomApi = async (id: string, data: Partial<Room>) => {
     payload.prof_capacity = (data as any).profCapacity;
   if ((data as any).residentCapacity !== undefined)
     payload.resident_capacity = (data as any).residentCapacity;
+  if ((data as any).proctorCapacity !== undefined)
+    payload.proctor_capacity = (data as any).proctorCapacity;
+  if (data.isActive !== undefined)
+    payload.is_active = data.isActive ? 1 : 0;
+  if (data.adminCapacity !== undefined)
+    payload.admin_capacity = data.adminCapacity;
+  if (data.itCapacity !== undefined)
+    payload.it_capacity = data.itCapacity;
+  if (data.zoneLeaderCapacity !== undefined)
+    payload.zone_leader_capacity = data.zoneLeaderCapacity;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/rooms/${id}`, {
     method: "PUT",
@@ -227,12 +262,15 @@ export const createExamApi = async (exam: Partial<Exam>) => {
   });
 };
 
-export const updateExamApi = async (id: string, data: Partial<Exam>) => {
+export const updateExamApi = async (id: string, data: Partial<Exam> & { room_ids?: string[] }) => {
   const payload: any = {};
   if (data.date !== undefined) payload.date = data.date;
   if (data.time !== undefined) payload.time = data.time;
   if (data.duration !== undefined) payload.duration = data.duration;
   if (data.subject !== undefined) payload.subject = data.subject;
+  if ((data as any).promo !== undefined) payload.promo = (data as any).promo;
+  if (data.roomIds !== undefined) payload.room_ids = data.roomIds;
+  if (data.room_ids !== undefined) payload.room_ids = data.room_ids;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/exams/${id}`, {
     method: "PUT",
@@ -441,10 +479,12 @@ export const createProctorApi = async (
   proctor: Partial<Proctor>,
 ): Promise<Proctor> => {
   const payload = {
+    id: proctor.id || undefined,
     name: proctor.name,
-    specialty: proctor.specialty || null,
+    specialty: proctor.specialty || "Administration",
     phone: proctor.phone || null,
     email: proctor.email || null,
+    is_active: proctor.is_active !== undefined ? (proctor.is_active ? 1 : 0) : 1,
   };
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/proctors`, {
@@ -463,6 +503,8 @@ export const updateProctorApi = async (
   if (data.specialty !== undefined) payload.specialty = data.specialty;
   if (data.phone !== undefined) payload.phone = data.phone;
   if (data.email !== undefined) payload.email = data.email;
+  if (data.is_active !== undefined) payload.is_active = data.is_active ? 1 : 0;
+  if (data.absences !== undefined) payload.absences = data.absences;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/proctors/${id}`, {
     method: "PUT",

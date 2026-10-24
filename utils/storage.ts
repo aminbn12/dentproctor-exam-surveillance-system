@@ -1,12 +1,13 @@
 // Utilitaire pour la persistance de données dans localStorage
-import { Professor, Resident, Room, Exam, Assignment } from '../types';
+import { Professor, Resident, Room, Exam, Assignment, Proctor } from '../types';
 
 const STORAGE_KEYS = {
   PROFS: 'dentproctor_profs',
   RESIDENTS: 'dentproctor_residents',
   ROOMS: 'dentproctor_rooms',
   EXAMS: 'dentproctor_exams',
-  ASSIGNMENTS: 'dentproctor_assignments'
+  ASSIGNMENTS: 'dentproctor_assignments',
+  PROCTORS: 'dentproctor_proctors'
 };
 
 export const saveToLocalStorage = (
@@ -14,7 +15,8 @@ export const saveToLocalStorage = (
   residents: Resident[],
   rooms: Room[],
   exams: Exam[],
-  assignments: Assignment[]
+  assignments: Assignment[],
+  proctors?: Proctor[]
 ) => {
   try {
     localStorage.setItem(STORAGE_KEYS.PROFS, JSON.stringify(profs));
@@ -22,6 +24,9 @@ export const saveToLocalStorage = (
     localStorage.setItem(STORAGE_KEYS.ROOMS, JSON.stringify(rooms));
     localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(exams));
     localStorage.setItem(STORAGE_KEYS.ASSIGNMENTS, JSON.stringify(assignments));
+    if (proctors) {
+      localStorage.setItem(STORAGE_KEYS.PROCTORS, JSON.stringify(proctors));
+    }
   } catch (error) {
     console.error('Erreur lors de la sauvegarde:', error);
   }
@@ -34,7 +39,8 @@ export const loadFromLocalStorage = () => {
       residents: JSON.parse(localStorage.getItem(STORAGE_KEYS.RESIDENTS) || '[]') as Resident[],
       rooms: JSON.parse(localStorage.getItem(STORAGE_KEYS.ROOMS) || '[]') as Room[],
       exams: JSON.parse(localStorage.getItem(STORAGE_KEYS.EXAMS) || '[]') as Exam[],
-      assignments: JSON.parse(localStorage.getItem(STORAGE_KEYS.ASSIGNMENTS) || '[]') as Assignment[]
+      assignments: JSON.parse(localStorage.getItem(STORAGE_KEYS.ASSIGNMENTS) || '[]') as Assignment[],
+      proctors: JSON.parse(localStorage.getItem(STORAGE_KEYS.PROCTORS) || '[]') as Proctor[]
     };
   } catch (error) {
     console.error('Erreur lors du chargement:', error);

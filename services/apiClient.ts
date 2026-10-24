@@ -76,11 +76,11 @@ class ApiClient {
 
   // ============ AUTHENTICATION ============
   async login(username: string, password: string) {
-    const response = await this.request("/auth/login", "POST", {
+    const response: any = await this.request("/auth/login", "POST", {
       username,
       password,
     });
-    if (response.access_token) {
+    if (response?.access_token) {
       this.setToken(response.access_token);
     }
     return response;

@@ -29,35 +29,66 @@ export const getShiftCounts = (
   return counts;
 };
 
+export const getDailyStaffCounts = (
+  assignments: Assignment[],
+  allExams: Exam[],
+  date: string,
+): Record<string, number> => {
+  const counts: Record<string, number> = {};
+  const examMap = new Map(allExams.map((e) => [e.id, e]));
+
+  assignments.forEach((a) => {
+    const ex = examMap.get(a.examId);
+    if (ex && ex.date === date) {
+      (a.profIds || []).forEach((pid) => {
+        counts[pid] = (counts[pid] || 0) + 1;
+      });
+      (a.residentIds || []).forEach((rid) => {
+        counts[rid] = (counts[rid] || 0) + 1;
+      });
+    }
+  });
+
+  return counts;
+};
+
 export const isStaffAvailable = (
   staff: Professor | Resident | Proctor,
   targetExam: Exam,
   allExams: Exam[],
   assignments: Assignment[],
 ): boolean => {
-  // Proctor n'a pas d'absences, toujours disponible
-  if (!("absences" in staff)) return true;
+  // Proctor : s'il est inactif, il n'est pas disponible
+  if ("is_active" in staff) {
+    const isActive =
+      (staff as Proctor).is_active === 1 ||
+      (staff as Proctor).is_active === (true as any);
+    if (!isActive) return false;
+  }
 
-  // Vérifier les absences (journée complète ou plage horaire)
-  for (const absence of staff.absences) {
-    if (absence.date !== targetExam.date) continue;
+  // Vérifier les absences (pour Professor et Resident)
+  if ("absences" in staff && Array.isArray((staff as any).absences)) {
+    for (const absence of (staff as any).absences) {
+      if (absence.date !== targetExam.date) continue;
 
-    // Journée complète
-    if (!absence.startTime || !absence.endTime) return false;
+      // Journée complète
+      if (!absence.startTime || !absence.endTime) return false;
 
-    // Absence partielle : vérifier le chevauchement avec l'examen
-    if (targetExam.time) {
-      const toMin = (t: string) => {
-        const [h, m] = t.split(":").map(Number);
-        return h * 60 + m;
-      };
-      const examStart = toMin(targetExam.time);
-      const examEnd = examStart + targetExam.duration;
-      const absStart = toMin(absence.startTime);
-      const absEnd = toMin(absence.endTime);
-      if (examStart < absEnd && examEnd > absStart) return false;
+      // Absence partielle : vérifier le chevauchement avec l'examen
+      if (targetExam.time) {
+        const toMin = (t: string) => {
+          const [h, m] = t.split(":").map(Number);
+          return h * 60 + m;
+        };
+        const examStart = toMin(targetExam.time);
+        const examEnd = examStart + targetExam.duration;
+        const absStart = toMin(absence.startTime);
+        const absEnd = toMin(absence.endTime);
+        if (examStart < absEnd && examEnd > absStart) return false;
+      }
     }
   }
+
   if (!targetExam.time) return true;
 
   const [targetH, targetM] = targetExam.time.split(":").map(Number);
@@ -67,7 +98,8 @@ export const isStaffAvailable = (
   for (const assignment of assignments) {
     if (
       assignment.profIds.includes(staff.id) ||
-      assignment.residentIds.includes(staff.id)
+      assignment.residentIds.includes(staff.id) ||
+      (assignment.proctorIds && assignment.proctorIds.includes(staff.id))
     ) {
       const otherExam = allExams.find((e) => e.id === assignment.examId);
       if (!otherExam || !otherExam.time || otherExam.date !== targetExam.date)
@@ -90,50 +122,85 @@ export const suggestProctorsForExamRoom = (
   residents: Resident[],
   allExams: Exam[],
   assignments: Assignment[],
-): { profIds: string[]; residentIds: string[] } => {
+  proctors?: Proctor[],
+): { profIds: string[]; residentIds: string[]; proctorIds: string[] } => {
   const shiftCounts = getShiftCounts(assignments, profs, residents);
+  const dailyCounts = getDailyStaffCounts(assignments, allExams, exam.date);
 
-  // --- LOGIQUE ENSEIGNANTS (AVEC RÈGLE PR OBLIGATOIRE) ---
+  // --- LOGIQUE ENSEIGNANTS ---
   let selectedProfIds: string[] = [];
   let availableProfs = profs.filter((p) =>
     isStaffAvailable(p, exam, allExams, assignments),
   );
 
-   // 1. Règle : Responsable de promo obligatoire pour la PREMIÈRE salle de l'examen
-   const firstRoomId = exam.roomIds?.[0];
-   if (firstRoomId && room.id === firstRoomId) {
-     const resp = availableProfs.find((p) => p.responsiblePromo === exam.promo);
-     if (resp) {
-       selectedProfIds.push(resp.id);
-       availableProfs = availableProfs.filter((p) => p.id !== resp.id);
-     }
-   }
+  // 1. Règle Responsable de promo :
+  // Présence TOUJOURS OBLIGATOIRE sans limite journalière lors des examens de sa promotion (sauf congé/maladie).
+  // L'option configurable "roomAlternation" (par défaut activée) permet d'activer ou désactiver
+  // le croisement / la rotation entre les différentes salles de l'examen.
+  const resp = profs.find((p) => p.responsiblePromo === exam.promo);
 
-  // 2. Garantie d'au moins un Pr (si pas déjà sélectionné via responsable)
+  if (resp) {
+    const assignedRoomIds = exam.roomIds || [];
+    const shouldAlternateRooms = resp.roomAlternation !== false;
+    let targetRoomId = assignedRoomIds[0];
+
+    if (shouldAlternateRooms && assignedRoomIds.length > 1) {
+      // Rotation chronologique entre les salles
+      const promoExams = allExams
+        .filter((e) => e.promo === exam.promo && e.date && e.time)
+        .sort(
+          (a, b) =>
+            new Date(`${a.date}T${a.time}`).getTime() -
+            new Date(`${b.date}T${b.time}`).getTime(),
+        );
+
+      const promoExamIdx = promoExams.findIndex((e) => e.id === exam.id);
+      const targetRoomIdx =
+        (promoExamIdx >= 0 ? promoExamIdx : 0) % (assignedRoomIds.length || 1);
+      targetRoomId = assignedRoomIds[targetRoomIdx];
+    }
+
+    if (room.id === targetRoomId) {
+      // Cette salle est la cible pour le responsable : l'assigner s'il est disponible (pas en congé/maladie)
+      const isRespAvailable = availableProfs.some((p) => p.id === resp.id);
+      if (isRespAvailable && room.profCapacity > 0) {
+        selectedProfIds.push(resp.id);
+        availableProfs = availableProfs.filter((p) => p.id !== resp.id);
+      }
+    } else if (assignedRoomIds.includes(targetRoomId)) {
+      // Le responsable est réservé pour la salle cible lors de ce même créneau :
+      // On l'exclut de la salle courante pour ne pas le bloquer ni le dédoubler
+      availableProfs = availableProfs.filter((p) => p.id !== resp.id);
+    }
+  }
+
+  // 2. Équité et répartition optimale des professeurs restants
+  // Calcul d'un score de charge effectif = vacations cumulées + pénalité journalière (pour lisser la journée)
   const selectedContainsPr = selectedProfIds.some(
     (id) => profs.find((p) => p.id === id)?.rank === "Pr",
   );
 
-  if (!selectedContainsPr && room.profCapacity > 0) {
-    // On cherche le Pr le moins chargé
-    const availablePrs = availableProfs
-      .filter((p) => p.rank === "Pr")
-      .sort((a, b) => shiftCounts[a.id] - shiftCounts[b.id]);
-
-    if (availablePrs.length > 0) {
-      const chosenPr = availablePrs[0];
-      selectedProfIds.push(chosenPr.id);
-      availableProfs = availableProfs.filter((p) => p.id !== chosenPr.id);
-    }
-  }
-
-  // 3. Compléter les places restantes par équité (Pr ou Dr indifféremment)
   availableProfs.sort((a, b) => {
-    if (shiftCounts[a.id] !== shiftCounts[b.id])
+    let loadA = (shiftCounts[a.id] || 0) + (dailyCounts[a.id] || 0) * 1.5;
+    let loadB = (shiftCounts[b.id] || 0) + (dailyCounts[b.id] || 0) * 1.5;
+
+    // Si la salle n'a pas encore de Pr et que la capacité le permet,
+    // légère bonification pour un Pr disponible s'il n'est pas déjà lourdement chargé
+    if (!selectedContainsPr && room.profCapacity > 0) {
+      if (a.rank === "Pr") loadA -= 0.5;
+      if (b.rank === "Pr") loadB -= 0.5;
+    }
+
+    if (Math.abs(loadA - loadB) > 0.01) {
+      return loadA - loadB;
+    }
+    if (shiftCounts[a.id] !== shiftCounts[b.id]) {
       return shiftCounts[a.id] - shiftCounts[b.id];
-    // A charge égale, on préfère un Pr pour la solidité de l'encadrement
-    if (a.rank !== b.rank) return a.rank === "Pr" ? -1 : 1;
-    return 0;
+    }
+    if (a.rank !== b.rank) {
+      return a.rank === "Pr" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
   });
 
   while (
@@ -143,43 +210,224 @@ export const suggestProctorsForExamRoom = (
     selectedProfIds.push(availableProfs.shift()!.id);
   }
 
-  // --- LOGIQUE RÉSIDENTS (Équité Absolue) ---
+  // --- LOGIQUE RÉSIDENTS (Hiérarchie d'expérience & Équité) ---
+  // Règle : Placer d'abord 1 résident senior (3e ou 4e année : R3 ou R4) pour encadrer,
+  // puis compléter les places restantes avec les autres années (R1 ou R2) en assurant la mixité.
   let selectedResidentIds: string[] = [];
-  let pool = residents.filter((r) =>
+  let availableResidents = residents.filter((r) =>
     isStaffAvailable(r, exam, allExams, assignments),
   );
 
-  pool.sort((a, b) => {
-    if (shiftCounts[a.id] !== shiftCounts[b.id])
-      return shiftCounts[a.id] - shiftCounts[b.id];
-    return b.level - a.level;
-  });
-
   const usedSpecialties = new Set<string>();
-  const usedLevels = new Set<number>();
 
-  for (const res of [...pool]) {
-    if (selectedResidentIds.length >= room.residentCapacity) break;
-    const isNewSpec = !usedSpecialties.has(res.specialty);
-    const isNewLevel = !usedLevels.has(res.level);
+  // Étape A : Sélection prioritaire d'un résident senior (R3 / R4)
+  if (room.residentCapacity > 0) {
+    const availableSeniors = availableResidents
+      .filter((r) => r.level >= 3)
+      .sort((a, b) => {
+        const loadA = (shiftCounts[a.id] || 0) + (dailyCounts[a.id] || 0) * 1.5;
+        const loadB = (shiftCounts[b.id] || 0) + (dailyCounts[b.id] || 0) * 1.5;
+        if (Math.abs(loadA - loadB) > 0.01) return loadA - loadB;
+        if (shiftCounts[a.id] !== shiftCounts[b.id])
+          return shiftCounts[a.id] - shiftCounts[b.id];
+        return b.level - a.level; // R4 avant R3 à charge égale
+      });
 
-    if (isNewSpec && isNewLevel) {
-      selectedResidentIds.push(res.id);
-      usedSpecialties.add(res.specialty);
-      usedLevels.add(res.level);
-      pool = pool.filter((r) => r.id !== res.id);
+    if (availableSeniors.length > 0) {
+      const chosenSenior = availableSeniors[0];
+      selectedResidentIds.push(chosenSenior.id);
+      usedSpecialties.add(chosenSenior.specialty);
+      availableResidents = availableResidents.filter(
+        (r) => r.id !== chosenSenior.id,
+      );
     }
   }
 
+  // Étape B : Compléter avec les résidents juniors (R1 / R2) puis les autres disponibles
+  // en favorisant la mixité de spécialités et l'équité de charge
+  availableResidents.sort((a, b) => {
+    let loadA = (shiftCounts[a.id] || 0) + (dailyCounts[a.id] || 0) * 1.5;
+    let loadB = (shiftCounts[b.id] || 0) + (dailyCounts[b.id] || 0) * 1.5;
+
+    // Préférer les juniors (R1/R2) pour compléter après le senior
+    if (a.level <= 2 && b.level > 2) loadA -= 0.3;
+    if (b.level <= 2 && a.level > 2) loadB -= 0.3;
+
+    // Pénaliser les doublons de spécialité dans la même salle (hors omnisport)
+    if (room.name.toLowerCase() !== "omnisport") {
+      if (usedSpecialties.has(a.specialty)) loadA += 5.0;
+      if (usedSpecialties.has(b.specialty)) loadB += 5.0;
+    }
+
+    if (Math.abs(loadA - loadB) > 0.01) return loadA - loadB;
+    if (shiftCounts[a.id] !== shiftCounts[b.id])
+      return shiftCounts[a.id] - shiftCounts[b.id];
+    return a.level - b.level;
+  });
+
   while (
     selectedResidentIds.length < room.residentCapacity &&
-    pool.length > 0
+    availableResidents.length > 0
   ) {
-    const next = pool.shift()!;
-    selectedResidentIds.push(next.id);
+    const nextResident = availableResidents.shift()!;
+    selectedResidentIds.push(nextResident.id);
+    usedSpecialties.add(nextResident.specialty);
   }
 
-  return { profIds: selectedProfIds, residentIds: selectedResidentIds };
+  // --- LOGIQUE SURVEILLANTS ADMINISTRATION (ADM, IT, ZONE) ---
+  let selectedProctorIds: string[] = [];
+  const reqAdm =
+    room.adminCapacity !== undefined
+      ? room.adminCapacity
+      : (room.proctorCapacity ?? 1);
+  const reqIt = room.itCapacity ?? 0;
+  const reqZone = room.zoneLeaderCapacity ?? 0;
+  const totalProctorCap = reqAdm + reqIt + reqZone;
+
+  if (totalProctorCap > 0 && proctors && proctors.length > 0) {
+    const proctorShiftCounts: Record<string, number> = {};
+    proctors.forEach((p) => (proctorShiftCounts[p.id] = 0));
+    assignments.forEach((a) => {
+      (a.proctorIds || []).forEach((pid) => {
+        if (proctorShiftCounts[pid] !== undefined) proctorShiftCounts[pid]++;
+      });
+    });
+
+    let availableProctors = proctors.filter(
+      (p) =>
+        (p.is_active === 1 || (p.is_active as any) === true) &&
+        isStaffAvailable(p, exam, allExams, assignments),
+    );
+
+    // Trier par équité de charge
+    availableProctors.sort(
+      (a, b) =>
+        (proctorShiftCounts[a.id] || 0) - (proctorShiftCounts[b.id] || 0),
+    );
+
+    // 1. Quota IT
+    let itCount = 0;
+    for (let i = 0; i < availableProctors.length && itCount < reqIt; ) {
+      const p = availableProctors[i];
+      if ((p.specialty || "").includes("IT")) {
+        selectedProctorIds.push(p.id);
+        availableProctors.splice(i, 1);
+        itCount++;
+      } else {
+        i++;
+      }
+    }
+
+    // 2. Quota Responsable de Zone
+    let zoneCount = 0;
+    for (let i = 0; i < availableProctors.length && zoneCount < reqZone; ) {
+      const p = availableProctors[i];
+      if ((p.specialty || "").includes("Zones")) {
+        selectedProctorIds.push(p.id);
+        availableProctors.splice(i, 1);
+        zoneCount++;
+      } else {
+        i++;
+      }
+    }
+
+    // 3. Quota Administration
+    let admCount = 0;
+    for (let i = 0; i < availableProctors.length && admCount < reqAdm; ) {
+      const p = availableProctors[i];
+      if (
+        (p.specialty || "Administration") === "Administration" ||
+        (p.specialty || "").includes("Administration")
+      ) {
+        selectedProctorIds.push(p.id);
+        availableProctors.splice(i, 1);
+        admCount++;
+      } else {
+        i++;
+      }
+    }
+
+    // 4. Si quotas non totalement remplis par catégorie exacte, compléter avec les proctors disponibles restants
+    while (
+      selectedProctorIds.length < totalProctorCap &&
+      availableProctors.length > 0
+    ) {
+      selectedProctorIds.push(availableProctors.shift()!.id);
+    }
+  }
+
+  return {
+    profIds: selectedProfIds,
+    residentIds: selectedResidentIds,
+    proctorIds: selectedProctorIds,
+  };
+};
+
+/**
+ * Répartit de manière exclusive les surveillants assignés dans une salle
+ * (Chaque surveillant n'apparaît que dans UNE SEULE colonne selon les quotas et son rôle).
+ */
+export const partitionAssignedProctors = (
+  assignedProctorObjs: Proctor[],
+  room: Room,
+): { adm: Proctor[]; it: Proctor[]; zone: Proctor[] } => {
+  const reqIt = room.itCapacity ?? 0;
+  const reqZone = room.zoneLeaderCapacity ?? 0;
+  const reqAdm =
+    room.adminCapacity !== undefined
+      ? room.adminCapacity
+      : (room.proctorCapacity ?? 1);
+
+  const remaining = [...assignedProctorObjs];
+  const itList: Proctor[] = [];
+  const zoneList: Proctor[] = [];
+  const admList: Proctor[] = [];
+
+  // 1. Quota IT : ceux dont la spécialité contient "IT"
+  for (let i = 0; i < remaining.length && itList.length < reqIt; ) {
+    if ((remaining[i].specialty || "").includes("IT")) {
+      itList.push(remaining.splice(i, 1)[0]);
+    } else {
+      i++;
+    }
+  }
+
+  // 2. Quota Responsable de Zone : ceux dont la spécialité contient "Zones"
+  for (let i = 0; i < remaining.length && zoneList.length < reqZone; ) {
+    if ((remaining[i].specialty || "").includes("Zones")) {
+      zoneList.push(remaining.splice(i, 1)[0]);
+    } else {
+      i++;
+    }
+  }
+
+  // 3. Quota Administration : ceux dont la spécialité contient "Administration" ou catégorie standard
+  for (let i = 0; i < remaining.length && admList.length < reqAdm; ) {
+    if (
+      (remaining[i].specialty || "").includes("Administration") ||
+      remaining[i].specialty === "Administration" ||
+      (!remaining[i].specialty?.includes("IT") &&
+        !remaining[i].specialty?.includes("Zones"))
+    ) {
+      admList.push(remaining.splice(i, 1)[0]);
+    } else {
+      i++;
+    }
+  }
+
+  // 4. Si des surveillants assignés restent (dépassement ou polyvalence), les répartir là où il manque du monde
+  while (remaining.length > 0) {
+    const p = remaining.shift()!;
+    if (zoneList.length < reqZone && (p.specialty || "").includes("Zones")) {
+      zoneList.push(p);
+    } else if (itList.length < reqIt && (p.specialty || "").includes("IT")) {
+      itList.push(p);
+    } else {
+      admList.push(p);
+    }
+  }
+
+  return { adm: admList, it: itList, zone: zoneList };
 };
 
 export const validateAssignment = (
@@ -188,6 +436,7 @@ export const validateAssignment = (
   room: Room,
   profs: Professor[],
   residents: Resident[],
+  allExams?: Exam[],
 ): string[] => {
   if (!assignment) return [];
   const warnings: string[] = [];
@@ -199,24 +448,50 @@ export const validateAssignment = (
     .map((id) => residents.find((r) => r.id === id))
     .filter(Boolean) as Resident[];
 
-  // NOUVELLE RÈGLE : Un Professeur (Pr) est OBLIGATOIRE
+  // Recommandation présence d'un Pr
   if (assignedProfs.length > 0) {
     const hasPr = assignedProfs.some((p) => p.rank === "Pr");
     if (!hasPr) {
       warnings.push(
-        "SÉCURITÉ : Un Professeur (Pr) est obligatoire pour encadrer la salle. (Dr seul interdit)",
+        "Encadrement : Aucun Professeur (Pr) assigné pour encadrer cette salle.",
       );
     }
   }
 
-   // Vérification : Responsable de promo obligatoire pour la première salle
-   const firstRoomId = exam.roomIds?.[0];
-   if (firstRoomId && room.id === firstRoomId) {
-     const hasResp = assignedProfs.some(
-       (p) => p.responsiblePromo === exam.promo,
-     );
-     if (!hasResp) warnings.push("Première salle : Responsable de promo absent.");
-   }
+  // Vérification Responsable de promo (obligatoire sauf absence)
+  const resp = profs.find((p) => p.responsiblePromo === exam.promo);
+  if (resp) {
+    const assignedRooms = exam.roomIds || [];
+    let targetRoomId = assignedRooms[0];
+    const shouldAlternateRooms = resp.roomAlternation !== false;
+
+    if (shouldAlternateRooms && assignedRooms.length > 1 && allExams && allExams.length > 0) {
+      const promoExams = allExams
+        .filter((e) => e.promo === exam.promo && e.date && e.time)
+        .sort(
+          (a, b) =>
+            new Date(`${a.date}T${a.time}`).getTime() -
+            new Date(`${b.date}T${b.time}`).getTime(),
+        );
+      const promoExamIdx = promoExams.findIndex((e) => e.id === exam.id);
+      const targetRoomIdx =
+        (promoExamIdx >= 0 ? promoExamIdx : 0) % (assignedRooms.length || 1);
+      targetRoomId = assignedRooms[targetRoomIdx];
+    }
+
+    if (room.id === targetRoomId) {
+      const hasResp = assignedProfs.some((p) => p.id === resp.id);
+      if (!hasResp) {
+        // Vérifier s'il a une absence déclarée
+        const isAbsent = !isStaffAvailable(resp, exam, allExams || [exam], []);
+        if (!isAbsent) {
+          warnings.push(
+            `Salle assignée : Le responsable de promo (${resp.name}) n'est pas assigné.`,
+          );
+        }
+      }
+    }
+  }
 
   if (assignedRes.length > 0) {
     const specs = assignedRes.map((r) => r.specialty);

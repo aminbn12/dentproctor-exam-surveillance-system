@@ -25,6 +25,8 @@ export interface Professor {
   name: string;
   rank: "Pr" | "Dr";
   responsiblePromo?: Promo;
+  mandatoryPromoPresence?: boolean;
+  roomAlternation?: boolean;
   subjects: string[];
   absences: Absence[];
 }
@@ -42,7 +44,11 @@ export interface Room {
   name: string;
   profCapacity: number;
   residentCapacity: number;
-  proctorCapacity?: number; // Capacité administration
+  proctorCapacity?: number; // Capacité administration totale
+  isActive?: boolean; // Actif / Inactif pour affichage planning
+  adminCapacity?: number; // Capacité Administration
+  itCapacity?: number; // Capacité IT / EVALBOX
+  zoneLeaderCapacity?: number; // Capacité Responsables de Zones
 }
 
 export interface Exam {
@@ -97,6 +103,7 @@ export interface Proctor {
   phone?: string;
   email?: string;
   is_active: number;
+  absences?: Absence[];
 }
 
 export type AppTab =

@@ -5,6 +5,7 @@ class ResidentBase(BaseModel):
     name: str
     level: int  # 1, 2, 3, 4
     specialty: str
+    user_id: Optional[str] = None
 
 class ResidentCreate(ResidentBase):
     id: Optional[str] = None  # Permettre de spécifier un ID personnalisé

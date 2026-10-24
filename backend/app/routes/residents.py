@@ -39,8 +39,9 @@ async def create_resident(
             )
     
     # Vérifier que l'utilisateur associé n'est pas déjà un professeur
-    if resident.user_id:
-        existing_prof = db.query(Professor).filter(Professor.user_id == resident.user_id).first()
+    res_user_id = getattr(resident, 'user_id', None)
+    if res_user_id:
+        existing_prof = db.query(Professor).filter(Professor.user_id == res_user_id).first()
         if existing_prof:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

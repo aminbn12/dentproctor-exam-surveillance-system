@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -39,7 +39,7 @@ async def create_room(
     # Vérifier unicité du nom
     existing = db.query(Room).filter(Room.name == room.name).first()
     if existing:
-        raise HTTPException(status_code=400, detail="❌ Cette salle existe déjà")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Une salle avec ce nom existe déjà")
     
     new_room = Room(**room.dict())
     db.add(new_room)

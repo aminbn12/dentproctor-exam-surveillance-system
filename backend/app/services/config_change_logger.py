@@ -3,11 +3,21 @@ Service de journalisation des modifications de configuration
 """
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 
 from app.models.config_change_log import ConfigChangeLog, EntityType, ActionType
 from app.models.user import User
 
+def _sanitize_for_json(data: Any) -> Any:
+    if data is None:
+        return None
+    if isinstance(data, dict):
+        return {k: _sanitize_for_json(v) for k, v in data.items()}
+    elif isinstance(data, (list, tuple, set)):
+        return [_sanitize_for_json(v) for v in data]
+    elif isinstance(data, (datetime, date)):
+        return data.isoformat()
+    return data
 
 def log_config_change(
     db: Session,
@@ -19,49 +29,41 @@ def log_config_change(
     new_value: Optional[Dict[str, Any]] = None,
     entity_name: Optional[str] = None,
     change_summary: Optional[str] = None
-) -> ConfigChangeLog:
+) -> Optional[ConfigChangeLog]:
     """
     Enregistre une modification de configuration.
-    
-    Args:
-        db: Session de base de données
-        user: Utilisateur ayant effectué la modification
-        entity_type: Type d'entité (professor, resident, room)
-        entity_id: ID de l'entité modifiée
-        action: Type d'action (create, update, delete)
-        old_value: Valeur avant modification (pour updates)
-        new_value: Valeur après modification
-        entity_name: Nom de l'entité pour affichage
-        change_summary: Résumé des changements
-    
-    Returns:
-        L'enregistrement de log créé
     """
-    # Générer un résumé automatique si non fourni
-    if change_summary is None:
-        change_summary = _generate_change_summary(entity_type, action, old_value, new_value, entity_name)
-    
-    # Obtenir le nom de l'utilisateur
-    user_name = user.full_name or user.username
-    
-    log_entry = ConfigChangeLog(
-        user_id=user.id,
-        user_name=user_name,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        entity_name=entity_name,
-        action=action,
-        old_value=old_value,
-        new_value=new_value,
-        change_summary=change_summary,
-        timestamp=datetime.utcnow()
-    )
-    
-    db.add(log_entry)
-    db.commit()
-    db.refresh(log_entry)
-    
-    return log_entry
+    try:
+        clean_old = _sanitize_for_json(old_value)
+        clean_new = _sanitize_for_json(new_value)
+
+        # Générer un résumé automatique si non fourni
+        if change_summary is None:
+            change_summary = _generate_change_summary(entity_type, action, clean_old, clean_new, entity_name)
+        
+        # Obtenir le nom de l'utilisateur
+        user_name = user.full_name or user.username
+        
+        log_entry = ConfigChangeLog(
+            user_id=user.id,
+            user_name=user_name,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_name=entity_name,
+            action=action,
+            old_value=clean_old,
+            new_value=clean_new,
+            change_summary=change_summary,
+            timestamp=datetime.utcnow()
+        )
+        
+        db.add(log_entry)
+        db.commit()
+        db.refresh(log_entry)
+        return log_entry
+    except Exception as e:
+        print(f"Warning: log_config_change failed: {e}")
+        return None
 
 
 def _generate_change_summary(
