@@ -18,9 +18,11 @@ class Professor(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    absences = Column(JSON, nullable=True, default=list)  # Liste des absences/indispos
+
     # Relations
     user = relationship("User", back_populates="professor")
-    absences = relationship("Absence", back_populates="professor", cascade="all, delete-orphan")
+    absence_records = relationship("Absence", back_populates="professor", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Professor {self.name}>"

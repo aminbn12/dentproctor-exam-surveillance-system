@@ -24,7 +24,7 @@ export interface Professor {
   id: string;
   name: string;
   rank: "Pr" | "Dr";
-  responsiblePromo?: Promo;
+  responsiblePromo?: Promo | null;
   mandatoryPromoPresence?: boolean;
   roomAlternation?: boolean;
   subjects: string[];

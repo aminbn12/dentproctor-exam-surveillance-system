@@ -149,7 +149,17 @@ const App: React.FC = () => {
       if (profsRes.ok) {
         const backendProfs: BackendProfessor[] = await profsRes.json();
         if (backendProfs && backendProfs.length > 0) {
-          setProfs(backendProfs.map(adaptProfessor));
+          const localProfs = loadFromLocalStorage()?.profs || [];
+          const localMap = new Map(localProfs.map((p) => [p.id, p.absences || []]));
+          setProfs(
+            backendProfs.map(adaptProfessor).map((p) => ({
+              ...p,
+              absences:
+                Array.isArray(p.absences) && p.absences.length > 0
+                  ? p.absences
+                  : localMap.get(p.id) || [],
+            })),
+          );
         }
       }
 
@@ -158,7 +168,17 @@ const App: React.FC = () => {
       if (residentsRes.ok) {
         const backendResidents: BackendResident[] = await residentsRes.json();
         if (backendResidents && backendResidents.length > 0) {
-          setResidents(backendResidents.map(adaptResident));
+          const localResidents = loadFromLocalStorage()?.residents || [];
+          const localMap = new Map(localResidents.map((r) => [r.id, r.absences || []]));
+          setResidents(
+            backendResidents.map(adaptResident).map((r) => ({
+              ...r,
+              absences:
+                Array.isArray(r.absences) && r.absences.length > 0
+                  ? r.absences
+                  : localMap.get(r.id) || [],
+            })),
+          );
         }
       }
 
@@ -373,6 +393,7 @@ const App: React.FC = () => {
           <StatsTab
             profs={profs}
             residents={residents}
+            proctors={proctors}
             assignments={assignments}
           />
         )}

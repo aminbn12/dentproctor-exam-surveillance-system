@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
-import { Professor, Resident, Assignment } from "../types";
+import { Professor, Resident, Assignment, Proctor } from "../types";
 import { ICONS } from "../constants";
+import { ShieldCheck } from "lucide-react";
 import { getShiftCounts } from "../services/schedulerService";
 import {
   BarChart,
@@ -16,17 +17,19 @@ import {
 interface StatsTabProps {
   profs: Professor[];
   residents: Resident[];
+  proctors?: Proctor[];
   assignments: Assignment[];
 }
 
 const StatsTab: React.FC<StatsTabProps> = ({
   profs,
   residents,
+  proctors = [],
   assignments,
 }) => {
   const shiftCounts = useMemo(
-    () => getShiftCounts(assignments, profs, residents),
-    [assignments, profs, residents],
+    () => getShiftCounts(assignments, profs, residents, proctors),
+    [assignments, profs, residents, proctors],
   );
 
   const profData = useMemo(() => {
@@ -36,11 +39,12 @@ const StatsTab: React.FC<StatsTabProps> = ({
         name: p.name,
         role: p.rank,
         shifts: shiftCounts[p.id] || 0,
+        isActive: true,
       }))
       .sort((a, b) => b.shifts - a.shifts);
     const total = list.reduce((acc, curr) => acc + curr.shifts, 0);
     const avg = list.length ? total / list.length : 0;
-    return { list, avg };
+    return { list, avg, totalStaff: list.length, activeStaff: list.length };
   }, [profs, shiftCounts]);
 
   const residentData = useMemo(() => {
@@ -48,31 +52,91 @@ const StatsTab: React.FC<StatsTabProps> = ({
       .map((r) => ({
         id: r.id,
         name: r.name,
-        role: `A${r.level}`,
+        role: `R${r.level}`,
         shifts: shiftCounts[r.id] || 0,
+        isActive: true,
       }))
       .sort((a, b) => b.shifts - a.shifts);
     const total = list.reduce((acc, curr) => acc + curr.shifts, 0);
     const avg = list.length ? total / list.length : 0;
-    return { list, avg };
+    return { list, avg, totalStaff: list.length, activeStaff: list.length };
   }, [residents, shiftCounts]);
+
+  const proctorData = useMemo(() => {
+    const list = (proctors || [])
+      .map((p) => {
+        const cat = p.specialty || "Administration";
+        const isDual = cat.includes("Administration") && cat.includes("Zones");
+        const tag = isDual
+          ? "ADM+ZONE"
+          : cat === "IT"
+            ? "IT"
+            : cat === "Responsables de Zones"
+              ? "ZONE"
+              : "ADM";
+        const isActive = p.is_active === 1 || (p.is_active as any) === true;
+        return {
+          id: p.id,
+          name: p.name,
+          role: tag,
+          fullRole: cat,
+          shifts: shiftCounts[p.id] || 0,
+          isActive,
+        };
+      })
+      .sort((a, b) => b.shifts - a.shifts);
+
+    const activeList = list.filter((p) => p.isActive);
+    const total = activeList.reduce((acc, curr) => acc + curr.shifts, 0);
+    const avg = activeList.length ? total / activeList.length : 0;
+    return { list, avg, totalStaff: list.length, activeStaff: activeList.length };
+  }, [proctors, shiftCounts]);
+
+  const totalStaffCount = profs.length + residents.length + (proctors || []).length;
+  const activeProctorCount = (proctors || []).filter(
+    (p) => p.is_active === 1 || (p.is_active as any) === true,
+  ).length;
+  const totalActiveStaffCount = profs.length + residents.length + activeProctorCount;
+
+  const totalAssignedShifts = useMemo(() => {
+    return (Object.values(shiftCounts) as number[]).reduce((a, b) => a + b, 0);
+  }, [shiftCounts]);
+
+  const overallAvgShifts = totalActiveStaffCount > 0
+    ? (totalAssignedShifts / totalActiveStaffCount).toFixed(1)
+    : "0.0";
+
+  const mobilizedStaffCount = useMemo(() => {
+    const all = [...profs, ...residents, ...(proctors || [])];
+    return all.filter((p) => (shiftCounts[p.id] || 0) > 0).length;
+  }, [profs, residents, proctors, shiftCounts]);
 
   const renderSection = (
     title: string,
-    data: { list: any[]; avg: number },
+    data: { list: any[]; avg: number; totalStaff?: number; activeStaff?: number },
     icon: React.ReactNode,
     primaryColor: string,
+    roleColumnLabel: string = "Grade / Rôle",
   ) => (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-2">
         <div className={`p-2 rounded-lg ${primaryColor} text-white shadow-sm`}>
           {icon}
         </div>
-        <h3 className="text-xl font-bold text-slate-800 tracking-tight">
-          {title}
-        </h3>
-        <div className="ml-auto text-[11px] font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-widest border border-slate-200">
-          Moyenne : {data.avg.toFixed(1)} surveillances
+        <div>
+          <h3 className="text-xl font-bold text-slate-800 tracking-tight">
+            {title}
+          </h3>
+          {data.totalStaff !== undefined && (
+            <div className="text-[11px] text-slate-400 font-bold mt-0.5">
+              {data.activeStaff ?? data.totalStaff} actif(s) sur {data.totalStaff}
+            </div>
+          )}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="text-[11px] font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-wider border border-slate-200">
+            Moyenne : {data.avg.toFixed(1)} surveillances
+          </div>
         </div>
       </div>
 
@@ -117,8 +181,10 @@ const StatsTab: React.FC<StatsTabProps> = ({
                   {data.list.map((entry, index) => {
                     const diff = entry.shifts - data.avg;
                     let color = "#6366f1"; // Indigo (Normal)
-                    if (entry.shifts === 0)
-                      color = "#94a3b8"; // Slate (Inactif)
+                    if (entry.isActive === false)
+                      color = "#cbd5e1"; // Slate clair (Désactivé)
+                    else if (entry.shifts === 0)
+                      color = "#94a3b8"; // Slate (Inactif 0 garde)
                     else if (diff > 1.2)
                       color = "#ef4444"; // Red (Surcharge)
                     else if (diff < -1.2) color = "#10b981"; // Green (Sous-charge)
@@ -143,7 +209,11 @@ const StatsTab: React.FC<StatsTabProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 bg-slate-400 rounded-full"></span>{" "}
-              Inactif (0)
+              0 Garde
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-slate-300 rounded-full"></span>{" "}
+              Désactivé
             </div>
           </div>
         </div>
@@ -157,7 +227,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
               <thead className="text-[10px] uppercase font-black text-slate-400 sticky top-0 bg-white z-10 border-b border-slate-100">
                 <tr>
                   <th className="text-left py-3">Individu</th>
-                  <th className="text-left py-3">Promotion</th>
+                  <th className="text-left py-3">{roleColumnLabel}</th>
                   <th className="text-right py-3">Total</th>
                   <th className="text-right py-3">Statut</th>
                 </tr>
@@ -165,24 +235,32 @@ const StatsTab: React.FC<StatsTabProps> = ({
               <tbody className="divide-y divide-slate-50">
                 {data.list.map((s) => {
                   const diff = s.shifts - data.avg;
+                  const isDeactivated = s.isActive === false;
+
                   return (
                     <tr
                       key={s.id}
-                      className="hover:bg-slate-50 transition-colors group"
+                      className={`hover:bg-slate-50 transition-colors group ${isDeactivated ? "opacity-60 bg-slate-50/50" : ""}`}
                     >
                       <td className="py-3 font-bold text-slate-700">
                         {s.name}
                       </td>
-                      <td className="py-3 text-slate-500 font-medium text-xs uppercase">
-                        {s.role}
+                      <td className="py-3 text-slate-500 font-medium text-xs">
+                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                          {s.role}
+                        </span>
                       </td>
                       <td className="py-3 text-right font-black text-indigo-950">
                         {s.shifts}
                       </td>
                       <td className="py-3 text-right">
-                        {s.shifts === 0 ? (
+                        {isDeactivated ? (
+                          <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 uppercase">
+                            Désactivé
+                          </span>
+                        ) : s.shifts === 0 ? (
                           <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 uppercase animate-pulse">
-                            Inactif
+                            0 Garde
                           </span>
                         ) : diff > 1.2 ? (
                           <span className="text-[9px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100 uppercase">
@@ -218,12 +296,14 @@ const StatsTab: React.FC<StatsTabProps> = ({
             Effectif Global
           </div>
           <div className="text-5xl font-black mt-2 leading-none">
-            {profs.length + residents.length}
+            {totalStaffCount}
           </div>
-          <div className="flex items-center gap-3 mt-4 text-indigo-200 text-[10px] font-bold uppercase tracking-widest">
+          <div className="flex flex-wrap items-center gap-2 mt-4 text-indigo-200 text-[10px] font-bold uppercase tracking-wider">
             <span>{profs.length} PR/DR</span>
             <span className="w-1 h-1 bg-indigo-400 rounded-full"></span>
             <span>{residents.length} Résidents</span>
+            <span className="w-1 h-1 bg-indigo-400 rounded-full"></span>
+            <span>{(proctors || []).length} Admin/Support</span>
           </div>
         </div>
 
@@ -232,28 +312,23 @@ const StatsTab: React.FC<StatsTabProps> = ({
             Charge Moyenne
           </div>
           <div className="text-5xl font-black text-slate-800 mt-2 leading-none">
-            {(
-              (Object.values(shiftCounts) as number[]).reduce(
-                (a, b) => a + b,
-                0,
-              ) / (profs.length + residents.length || 1)
-            ).toFixed(1)}
+            {overallAvgShifts}
           </div>
           <div className="text-[10px] text-indigo-600 mt-4 font-black uppercase tracking-widest flex items-center gap-2">
-            <ICONS.CheckCircle2 className="w-3 h-3" /> Gardes / personne
+            <ICONS.CheckCircle2 className="w-3 h-3" /> Gardes / personne active
           </div>
         </div>
 
         <div className="bg-emerald-500 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
           <ICONS.Sparkles className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10" />
           <div className="text-emerald-100 text-[10px] font-black uppercase tracking-[0.2em]">
-            Couverture
+            Mobilisation
           </div>
           <div className="text-5xl font-black mt-2 leading-none">
-            {residents.filter((r) => (shiftCounts[r.id] || 0) > 0).length}
+            {mobilizedStaffCount}
           </div>
           <div className="text-[10px] text-emerald-100 mt-4 font-bold uppercase tracking-widest">
-            Résidents actifs sur {residents.length}
+            Personnes mobilisées sur {totalStaffCount}
           </div>
         </div>
       </div>
@@ -263,6 +338,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
         profData,
         <ICONS.GraduationCap className="w-6 h-6" />,
         "bg-indigo-600",
+        "Grade",
       )}
 
       {renderSection(
@@ -270,14 +346,16 @@ const StatsTab: React.FC<StatsTabProps> = ({
         residentData,
         <ICONS.Users className="w-6 h-6" />,
         "bg-emerald-600",
+        "Niveau",
       )}
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-      `}</style>
+      {renderSection(
+        "Équité Administration & Support",
+        proctorData,
+        <ShieldCheck className="w-6 h-6" />,
+        "bg-sky-600",
+        "Rôle / Pôle",
+      )}
     </div>
   );
 };

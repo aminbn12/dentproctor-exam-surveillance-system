@@ -10,6 +10,7 @@ export interface BackendProfessor {
   room_alternation?: boolean | number;
   subjects?: string[];
   user_id?: string;
+  absences?: any[];
 }
 
 export interface BackendResident {
@@ -18,6 +19,7 @@ export interface BackendResident {
   level: number;
   specialty: string;
   user_id?: string;
+  absences?: any[];
 }
 
 export interface BackendRoom {
@@ -67,7 +69,7 @@ export const adaptProfessor = (backend: BackendProfessor): Professor => ({
         (backend.room_alternation as any) === 1
       : true,
   subjects: backend.subjects || [],
-  absences: [],
+  absences: Array.isArray(backend.absences) ? backend.absences : [],
 });
 
 // Convertir les résidents du backend au format frontend
@@ -76,7 +78,7 @@ export const adaptResident = (backend: BackendResident): Resident => ({
   name: backend.name,
   level: ((backend.level >= 1 && backend.level <= 4) ? backend.level : 1) as 1 | 2 | 3 | 4,
   specialty: backend.specialty,
-  absences: [],
+  absences: Array.isArray(backend.absences) ? backend.absences : [],
 });
 
 // Convertir les salles du backend au format frontend

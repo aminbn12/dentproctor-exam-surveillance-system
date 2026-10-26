@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -15,9 +15,11 @@ class Resident(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    absences = Column(JSON, nullable=True, default=list)  # Liste des absences/indispos
+
     # Relations
     user = relationship("User", back_populates="resident")
-    absences = relationship("Absence", back_populates="resident", cascade="all, delete-orphan")
+    absence_records = relationship("Absence", back_populates="resident", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Resident {self.name} (Y{self.level})>"

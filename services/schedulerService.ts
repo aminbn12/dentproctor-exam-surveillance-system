@@ -13,9 +13,10 @@ export const getShiftCounts = (
   assignments: Assignment[],
   profs: Professor[],
   residents: Resident[],
+  proctors: Proctor[] = [],
 ) => {
   const counts: Record<string, number> = {};
-  [...profs, ...residents].forEach((p) => (counts[p.id] = 0));
+  [...profs, ...residents, ...proctors].forEach((p) => (counts[p.id] = 0));
 
   assignments.forEach((a) => {
     a.profIds.forEach((pid) => {
@@ -23,6 +24,9 @@ export const getShiftCounts = (
     });
     a.residentIds.forEach((rid) => {
       if (counts[rid] !== undefined) counts[rid]++;
+    });
+    (a.proctorIds || []).forEach((prid) => {
+      if (counts[prid] !== undefined) counts[prid]++;
     });
   });
 
@@ -45,6 +49,9 @@ export const getDailyStaffCounts = (
       });
       (a.residentIds || []).forEach((rid) => {
         counts[rid] = (counts[rid] || 0) + 1;
+      });
+      (a.proctorIds || []).forEach((prid) => {
+        counts[prid] = (counts[prid] || 0) + 1;
       });
     }
   });
@@ -174,40 +181,65 @@ export const suggestProctorsForExamRoom = (
     }
   }
 
-  // 2. Équité et répartition optimale des professeurs restants
-  // Calcul d'un score de charge effectif = vacations cumulées + pénalité journalière (pour lisser la journée)
-  const selectedContainsPr = selectedProfIds.some(
+  // 2. Équité et répartition optimale des professeurs :
+  // - Règle d'encadrement senior : Garantir au moins 1 Pr par salle (ne jamais laisser les Dr seuls [Dr, Dr]).
+  // - Règle d'équité globale : Répartition équitable de la charge entre TOUS les enseignants
+  //   (Pr et Dr) autour de la même moyenne globale, quel que soit le nombre d'épreuves (21, 48, etc.).
+  const sortProfsByLoad = (list: Professor[]): Professor[] => {
+    return [...list].sort((a, b) => {
+      const loadA = (shiftCounts[a.id] || 0) + (dailyCounts[a.id] || 0) * 1.5;
+      const loadB = (shiftCounts[b.id] || 0) + (dailyCounts[b.id] || 0) * 1.5;
+      if (Math.abs(loadA - loadB) > 0.01) return loadA - loadB;
+      if (shiftCounts[a.id] !== shiftCounts[b.id])
+        return shiftCounts[a.id] - shiftCounts[b.id];
+      return a.name.localeCompare(b.name);
+    });
+  };
+
+  let hasPr = selectedProfIds.some(
     (id) => profs.find((p) => p.id === id)?.rank === "Pr",
   );
 
-  availableProfs.sort((a, b) => {
-    let loadA = (shiftCounts[a.id] || 0) + (dailyCounts[a.id] || 0) * 1.5;
-    let loadB = (shiftCounts[b.id] || 0) + (dailyCounts[b.id] || 0) * 1.5;
+  // Étape A : Garantir au moins 1 Professeur (Pr) pour l'encadrement senior de la salle
+  // (Empêche qu'une salle se retrouve avec des Dr seuls sans Pr)
+  if (!hasPr && selectedProfIds.length < room.profCapacity) {
+    const availablePrs = sortProfsByLoad(
+      availableProfs.filter((p) => p.rank === "Pr"),
+    );
+    if (availablePrs.length > 0) {
+      const chosenPr = availablePrs[0];
+      selectedProfIds.push(chosenPr.id);
+      availableProfs = availableProfs.filter((p) => p.id !== chosenPr.id);
+      hasPr = true;
+    }
+  }
 
-    // Si la salle n'a pas encore de Pr et que la capacité le permet,
-    // légère bonification pour un Pr disponible s'il n'est pas déjà lourdement chargé
-    if (!selectedContainsPr && room.profCapacity > 0) {
-      if (a.rank === "Pr") loadA -= 0.5;
-      if (b.rank === "Pr") loadB -= 0.5;
-    }
-
-    if (Math.abs(loadA - loadB) > 0.01) {
-      return loadA - loadB;
-    }
-    if (shiftCounts[a.id] !== shiftCounts[b.id]) {
-      return shiftCounts[a.id] - shiftCounts[b.id];
-    }
-    if (a.rank !== b.rank) {
-      return a.rank === "Pr" ? -1 : 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
-
+  // Étape B : Compléter les places restantes selon l'ÉQUITÉ GLOBALE (Pr et Dr)
+  // Les enseignants (Pr et Dr) sont sélectionnés ensemble selon leur charge réelle cumulée.
+  // Les salles avec 2 surveillants auront soit [Pr + Dr], soit [Pr + Pr], mais JAMAIS [Dr + Dr].
   while (
     selectedProfIds.length < room.profCapacity &&
     availableProfs.length > 0
   ) {
-    selectedProfIds.push(availableProfs.shift()!.id);
+    const sorted = sortProfsByLoad(availableProfs);
+
+    // Trouver le candidat le moins chargé respectant la règle d'encadrement
+    const candidateIdx = sorted.findIndex((p) => {
+      // Si la salle possède déjà un Pr (ou si capacité === 1), Pr comme Dr sont éligibles
+      if (hasPr || room.profCapacity === 1) return true;
+      // Si la salle n'a pas encore de Pr, priorité absolue à un Pr pour éviter [Dr, Dr]
+      if (p.rank === "Pr") return true;
+      // Repli d'urgence : aucun Pr n'est disponible dans la faculté sur ce créneau
+      const anyPrLeft = sorted.some((other) => other.rank === "Pr");
+      return !anyPrLeft;
+    });
+
+    if (candidateIdx === -1) break;
+
+    const chosen = sorted[candidateIdx];
+    selectedProfIds.push(chosen.id);
+    availableProfs = availableProfs.filter((p) => p.id !== chosen.id);
+    if (chosen.rank === "Pr") hasPr = true;
   }
 
   // --- LOGIQUE RÉSIDENTS (Hiérarchie d'expérience & Équité) ---
@@ -347,13 +379,11 @@ export const suggestProctorsForExamRoom = (
       }
     }
 
-    // 4. Si quotas non totalement remplis par catégorie exacte, compléter avec les proctors disponibles restants
-    while (
-      selectedProctorIds.length < totalProctorCap &&
-      availableProctors.length > 0
-    ) {
-      selectedProctorIds.push(availableProctors.shift()!.id);
-    }
+    // 4. Strict cloisonnement des rôles (Option 2) :
+    // INTERDICTION FORMELLE au personnel IT de combler des places vacantes d'Administration ou de Zone.
+    // De même, les quotas ADM et ZONE ne sont attribués qu'au personnel qualifié.
+    // Si une catégorie manque de personnel (ex: 0 Responsable de Zone disponible sur ce créneau),
+    // la salle reste strictement en l'état (ex: 3 / 4) avec ZONE: 0/1, sans appel indu de personnel IT.
   }
 
   return {
@@ -415,13 +445,16 @@ export const partitionAssignedProctors = (
     }
   }
 
-  // 4. Si des surveillants assignés restent (dépassement ou polyvalence), les répartir là où il manque du monde
+  // 4. Surveillants assignés restants (en cas de dépassement ou d'affectation manuelle) :
+  // Strict cloisonnement : un profil IT reste TOUJOURS IT, il n'est JAMAIS basculé en ADM !
   while (remaining.length > 0) {
     const p = remaining.shift()!;
-    if (zoneList.length < reqZone && (p.specialty || "").includes("Zones")) {
-      zoneList.push(p);
-    } else if (itList.length < reqIt && (p.specialty || "").includes("IT")) {
+    if ((p.specialty || "").includes("IT")) {
       itList.push(p);
+    } else if (zoneList.length < reqZone && (p.specialty || "").includes("Zones")) {
+      zoneList.push(p);
+    } else if ((p.specialty || "").includes("Zones") && !(p.specialty || "").includes("Administration")) {
+      zoneList.push(p);
     } else {
       admList.push(p);
     }

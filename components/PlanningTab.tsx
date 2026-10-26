@@ -400,6 +400,13 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
           new Date(`${b.date}T${b.time}`).getTime(),
       );
 
+    const uniqueDates: string[] = [];
+    sortedExams.forEach((e) => {
+      if (e.date && !uniqueDates.includes(e.date)) {
+        uniqueDates.push(e.date);
+      }
+    });
+
     // Fonction pour calculer l'heure de fin
     const getEndTime = (time: string, duration: number) => {
       const [hours, minutes] = time.split(":").map(Number);
@@ -412,6 +419,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
     sortedExams.forEach((exam) => {
       const examRooms = exam.roomIds || [];
       const endTime = getEndTime(exam.time, exam.duration);
+      const dateIdx = uniqueDates.indexOf(exam.date);
+      const dayBg = dateIdx % 2 === 1 ? "#f1f5f9" : "#ffffff";
+      const promoBg = promoColors[exam.promo] || "#ffffff";
 
       examRooms.forEach((roomId) => {
         const room = rooms.find((r) => r.id === roomId);
@@ -432,7 +442,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                 .trim();
               const rank = (p?.rank || "").toString().replace(/\.$/, "");
               const display = rank ? `${rank} ${cleanName}` : cleanName;
-              return `${display}${p?.responsiblePromo === exam.promo ? " (Resp)" : ""}`;
+              const promoDigit = (exam.promo || "").match(/\d+$/)?.[0] || (exam.promo || "").replace(/\D/g, "").slice(-1) || exam.promo || "";
+              const respTag = p?.responsiblePromo === exam.promo ? ` (Resp ${promoDigit})` : "";
+              return `${display}${respTag}`;
             })
             .join(", ") || "";
 
@@ -462,21 +474,19 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
         const assignedIt = itProctors.map((p) => p.name).join(", ");
         const assignedZone = zoneProctors.map((p) => p.name).join(", ");
 
-        const bgColor = promoColors[exam.promo] || "#ffffff";
-
         tableContent += `
           <tr>
-            <td class="centered">${exam.date}</td>
-            <td class="centered">${exam.time}</td>
-            <td class="centered">${endTime}</td>
-            <td class="centered" style="font-weight: bold; background-color: ${bgColor}">${exam.promo}</td>
-            <td style="font-weight: bold; background-color: ${bgColor}">${exam.subject}</td>
-            <td class="centered" style="color: #dc2626; font-weight: bold;">${room.name}</td>
-            <td>${assignedProfs}</td>
-            <td>${assignedResidents}</td>
-            <td>${assignedAdm}</td>
-            <td>${assignedIt}</td>
-            <td>${assignedZone}</td>
+            <td class="centered" style="background-color: ${dayBg};">${exam.date}</td>
+            <td class="centered" style="background-color: ${dayBg};">${exam.time}</td>
+            <td class="centered" style="background-color: ${dayBg};">${endTime}</td>
+            <td class="centered" style="font-weight: bold; background-color: ${promoBg};">${exam.promo}</td>
+            <td style="font-weight: bold; background-color: ${promoBg};">${exam.subject}</td>
+            <td class="centered" style="color: #dc2626; font-weight: bold; background-color: ${dayBg};">${room.name}</td>
+            <td style="background-color: ${dayBg};">${assignedProfs}</td>
+            <td style="background-color: ${dayBg};">${assignedResidents}</td>
+            <td style="background-color: ${dayBg};">${assignedAdm}</td>
+            <td style="background-color: ${dayBg};">${assignedIt}</td>
+            <td style="background-color: ${dayBg};">${assignedZone}</td>
           </tr>
         `;
       });
@@ -541,7 +551,9 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                 .trim();
               const rank = (p?.rank || "").toString().replace(/\.$/, "");
               const display = rank ? `${rank} ${cleanName}` : cleanName;
-              return `${display}${p?.responsiblePromo === exam.promo ? " (Resp)" : ""}`;
+              const promoDigit = (exam.promo || "").match(/\d+$/)?.[0] || (exam.promo || "").replace(/\D/g, "").slice(-1) || exam.promo || "";
+              const respTag = p?.responsiblePromo === exam.promo ? ` (Resp ${promoDigit})` : "";
+              return `${display}${respTag}`;
             })
             .join(", ") || "";
 
@@ -794,7 +806,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
               <th className="p-3.5 text-left font-bold text-slate-600 w-56 min-w-[220px] sticky top-0 left-0 bg-slate-100/95 backdrop-blur-xs z-40 border-r border-b border-slate-200 uppercase text-[11px] tracking-wider shadow-[2px_0_6px_rgba(0,0,0,0.06)]">
                 Détails Épreuve
               </th>
-              <th className="p-2 text-left font-bold text-slate-600 sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 border-r border-b border-slate-200 uppercase text-[10px] tracking-wider w-36 min-w-[130px] max-w-[150px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+              <th className="p-2 text-left font-bold text-slate-600 sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 border-r border-b border-slate-200 uppercase text-[10px] tracking-wider w-44 min-w-[165px] max-w-[190px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
                 Exceptions / Indispos
               </th>
               {activeRooms.map((room) => {
@@ -880,24 +892,24 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                     </div>
                   </td>
 
-                  {/* Colonne Exceptions & Indisponibilités - Format compact */}
-                  <td className="p-2 align-top border-r border-slate-100 bg-slate-50/20 w-36 min-w-[130px] max-w-[150px]">
+                  {/* Colonne Exceptions & Indisponibilités - Format optimisé sans coupure */}
+                  <td className="p-2 align-top border-r border-slate-100 bg-slate-50/20 w-44 min-w-[165px] max-w-[190px]">
                     {totalAbsent === 0 ? (
                       <div className="flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded px-1.5 py-1 font-bold">
                         <ICONS.CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                         <span>Aucune</span>
                       </div>
                     ) : (
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <div className="text-[9px] font-black text-amber-800 bg-amber-50 border border-amber-200/80 rounded px-1.5 py-0.5 inline-flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                           <span>{totalAbsent} indispo(s)</span>
                         </div>
-                        <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto pr-0.5">
+                        <div className="flex flex-col gap-1 max-h-80 overflow-y-auto pr-1 pb-1.5 custom-scrollbar">
                           {absentProfs.map((p) => (
                             <span
                               key={p.id}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 font-medium truncate block"
+                              className="text-[9px] px-2 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 font-medium truncate block leading-relaxed"
                               title={`Enseignant: ${p.rank}. ${p.name}`}
                             >
                               <strong>{p.rank}</strong> {p.name}
@@ -906,7 +918,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                           {absentResidents.map((r) => (
                             <span
                               key={r.id}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-medium truncate block"
+                              className="text-[9px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-medium truncate block leading-relaxed"
                               title={`Résident: R${r.level} ${r.name} (${r.specialty})`}
                             >
                               <strong>R{r.level}</strong> {r.name}
@@ -927,7 +939,7 @@ const PlanningTab: React.FC<PlanningTabProps> = ({
                             return (
                               <span
                                 key={pr.id}
-                                className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-medium truncate block"
+                                className="text-[9px] px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-medium truncate block leading-relaxed"
                                 title={`Personnel: [${tag}] ${pr.name}`}
                               >
                                 <strong>[{tag}]</strong> {pr.name}

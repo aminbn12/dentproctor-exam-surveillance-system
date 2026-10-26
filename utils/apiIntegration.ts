@@ -111,6 +111,7 @@ export const createProfessor = async (prof: Partial<Professor>) => {
         ? prof.roomAlternation
         : true,
     subjects: prof.subjects || [],
+    absences: prof.absences || [],
   };
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/professors`, {
@@ -128,12 +129,13 @@ export const updateProfessorApi = async (
   if (data.name !== undefined) payload.name = data.name;
   if (data.rank !== undefined) payload.rank = data.rank;
   if ((data as any).responsiblePromo !== undefined)
-    payload.responsible_promo = (data as any).responsiblePromo;
+    payload.responsible_promo = (data as any).responsiblePromo ? (data as any).responsiblePromo : null;
   if (data.mandatoryPromoPresence !== undefined)
     payload.mandatory_promo_presence = data.mandatoryPromoPresence;
   if (data.roomAlternation !== undefined)
     payload.room_alternation = data.roomAlternation;
   if (data.subjects !== undefined) payload.subjects = data.subjects;
+  if (data.absences !== undefined) payload.absences = data.absences;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/professors/${id}`, {
     method: "PUT",
@@ -155,6 +157,7 @@ export const createResident = async (res: Partial<Resident>) => {
     name: res.name,
     level: res.level,
     specialty: res.specialty,
+    absences: res.absences || [],
   };
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/residents`, {
@@ -172,6 +175,7 @@ export const updateResidentApi = async (
   if (data.name !== undefined) payload.name = data.name;
   if (data.level !== undefined) payload.level = data.level;
   if (data.specialty !== undefined) payload.specialty = data.specialty;
+  if (data.absences !== undefined) payload.absences = data.absences;
   const headers = getFetchHeaders();
   return safeFetch(`${API_BASE}/residents/${id}`, {
     method: "PUT",

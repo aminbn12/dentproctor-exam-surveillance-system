@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
+import { Sun, Moon, X, Sparkles, Check, CalendarDays, Clock3, Search, BookOpen } from "lucide-react";
 import { Absence, Proctor } from "../types";
 import { Professor, Resident, Room, Exam, Promo } from "../types";
 import { ICONS, PROMOS, PROMO_COLORS } from "../constants";
@@ -32,6 +33,760 @@ import {
   exportExamsToExcel,
   parseExamsFromExcel,
 } from "../utils/excelExamService";
+
+export const formatFrenchDateShort = (dateStr: string) => {
+  try {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    if (!y || !m || !d) return dateStr;
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString("fr-FR", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+export const getDatesInRange = (startStr: string, endStr: string): string[] => {
+  const [y1, m1, d1] = startStr.split("-").map(Number);
+  const [y2, m2, d2] = endStr.split("-").map(Number);
+  const s = new Date(y1, m1 - 1, d1);
+  const e = new Date(y2, m2 - 1, d2);
+  if (s > e) return [];
+  const list: string[] = [];
+  const cur = new Date(s);
+  while (cur <= e) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, "0");
+    const d = String(cur.getDate()).padStart(2, "0");
+    list.push(`${y}-${m}-${d}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return list;
+};
+
+export const getExamEndStr = (startTime: string, durationMin: number) => {
+  const [h, m] = startTime.split(":").map(Number);
+  const total = h * 60 + m + durationMin;
+  const eh = Math.floor(total / 60);
+  const em = total % 60;
+  return `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
+};
+
+interface BulkResidentAbsenceModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  residents: Resident[];
+  setResidents: React.Dispatch<React.SetStateAction<Resident[]>>;
+  exams: Exam[];
+  initialSelectedIds?: string[];
+}
+
+const BulkResidentAbsenceModal: React.FC<BulkResidentAbsenceModalProps> = ({
+  isOpen,
+  onClose,
+  residents,
+  setResidents,
+  exams,
+  initialSelectedIds = [],
+}) => {
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
+  const [searchName, setSearchName] = useState("");
+  const [levelFilter, setLevelFilter] = useState<"ALL" | 1 | 2 | 3 | 4>("ALL");
+  const [dateMode, setDateMode] = useState<"single" | "range">("single");
+  const [dateInput, setDateInput] = useState("");
+  const [dateEndInput, setDateEndInput] = useState("");
+  const [timePreset, setTimePreset] = useState<"full" | "morning" | "afternoon" | "custom">("full");
+  const [isPartial, setIsPartial] = useState(false);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedIds(initialSelectedIds || []);
+      setSearchName("");
+      setLevelFilter("ALL");
+      setSuccessMsg(null);
+    }
+  }, [isOpen, initialSelectedIds]);
+
+  // Dates uniques d'examens dans la session
+  const sessionExamDates = useMemo(() => {
+    return Array.from(
+      new Set(exams.map((e) => e.date).filter(Boolean)),
+    ).sort();
+  }, [exams]);
+
+  // 1. Filtrage instantané des résidents par nom, spécialité et niveau
+  const filteredResidents = useMemo(() => {
+    const q = searchName.trim().toLowerCase();
+    return residents.filter((r) => {
+      if (q) {
+        const matchName = r.name.toLowerCase().includes(q);
+        const matchSpec = (r.specialty || "").toLowerCase().includes(q);
+        if (!matchName && !matchSpec) return false;
+      }
+      if (levelFilter !== "ALL" && r.level !== levelFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [residents, searchName, levelFilter]);
+
+  // Examens programmés à la date sélectionnée (mode date unique)
+  const examsOnSelectedDate = useMemo(() => {
+    if (!dateInput) return [];
+    return exams
+      .filter((e) => e.date === dateInput && e.time)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }, [dateInput, exams]);
+
+  if (!isOpen) return null;
+
+  const handleSelectPreset = (preset: "full" | "morning" | "afternoon" | "custom") => {
+    setTimePreset(preset);
+    if (preset === "full") {
+      setIsPartial(false);
+      setStartTime("");
+      setEndTime("");
+    } else if (preset === "morning") {
+      setIsPartial(true);
+      setStartTime("08:00");
+      setEndTime("13:00");
+    } else if (preset === "afternoon") {
+      setIsPartial(true);
+      setStartTime("13:00");
+      setEndTime("18:00");
+    } else {
+      setIsPartial(true);
+      if (!startTime) setStartTime("09:00");
+      if (!endTime) setEndTime("11:00");
+    }
+  };
+
+  const handleSelectExamSlot = (ex: Exam) => {
+    setTimePreset("custom");
+    setIsPartial(true);
+    setStartTime(ex.time);
+    setEndTime(getExamEndStr(ex.time, ex.duration));
+  };
+
+  const handleToggleResident = (resId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(resId) ? prev.filter((id) => id !== resId) : [...prev, resId]
+    );
+  };
+
+  const handleSelectAllFiltered = () => {
+    const idsToAdd = filteredResidents.map((r) => r.id);
+    setSelectedIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+  };
+
+  const handleDeselectAllFiltered = () => {
+    const idsToRemove = new Set(filteredResidents.map((r) => r.id));
+    setSelectedIds((prev) => prev.filter((id) => !idsToRemove.has(id)));
+  };
+
+  const rangeDatesCount =
+    dateMode === "range" && dateInput && dateEndInput
+      ? getDatesInRange(dateInput, dateEndInput).length
+      : 0;
+
+  const handleApply = async () => {
+    if (selectedIds.length === 0) {
+      alert("Veuillez sélectionner au moins un résident.");
+      return;
+    }
+
+    let dates: string[] = [];
+    if (dateMode === "single") {
+      if (!dateInput) {
+        alert("Veuillez sélectionner une date.");
+        return;
+      }
+      dates = [dateInput];
+    } else {
+      if (!dateInput || !dateEndInput) {
+        alert("Veuillez renseigner la date de début et la date de fin.");
+        return;
+      }
+      dates = getDatesInRange(dateInput, dateEndInput);
+      if (dates.length === 0) {
+        alert("La date de début doit être antérieure ou égale à la date de fin.");
+        return;
+      }
+    }
+
+    if (isPartial) {
+      if (!startTime || !endTime) {
+        alert("Veuillez renseigner l'heure de début et l'heure de fin.");
+        return;
+      }
+      if (startTime >= endTime) {
+        alert("L'heure de fin doit être après l'heure de début.");
+        return;
+      }
+    }
+
+    const newAbsences: Absence[] = dates.map((date) =>
+      isPartial
+        ? { date, startTime, endTime }
+        : { date }
+    );
+
+    setIsApplying(true);
+    try {
+      const updatedMap = new Map<string, Absence[]>();
+      for (const resId of selectedIds) {
+        const res = residents.find((r) => r.id === resId);
+        if (!res) continue;
+        const existing = res.absences || [];
+        const toAdd = newAbsences.filter(
+          (na) =>
+            !existing.some(
+              (a) =>
+                a.date === na.date &&
+                (a.startTime || "") === (na.startTime || "") &&
+                (a.endTime || "") === (na.endTime || "")
+            )
+        );
+        if (toAdd.length > 0) {
+          updatedMap.set(resId, [...existing, ...toAdd]);
+        }
+      }
+
+      if (updatedMap.size === 0) {
+        alert("Tous les résidents sélectionnés ont déjà ces indisponibilités enregistrées.");
+        setIsApplying(false);
+        return;
+      }
+
+      // 1. Mettre à jour l'état local React
+      setResidents((prev) =>
+        prev.map((r) =>
+          updatedMap.has(r.id)
+            ? { ...r, absences: updatedMap.get(r.id)! }
+            : r
+        )
+      );
+
+      // 2. Persister dans la BDD SQLite
+      const backend = await syncWithBackend();
+      if (backend?.isBackendAvailable) {
+        for (const [resId, absList] of updatedMap.entries()) {
+          try {
+            await updateResidentApi(resId, { absences: absList } as any);
+          } catch (err) {
+            console.warn(`Erreur persistence absence résident ${resId}:`, err);
+          }
+        }
+      }
+
+      setSuccessMsg(
+        `Indisponibilité enregistrée avec succès pour ${updatedMap.size} résident(s) !`
+      );
+      setTimeout(() => {
+        setSuccessMsg(null);
+        onClose();
+      }, 1200);
+    } catch (err: any) {
+      alert("Erreur lors de l'enregistrement : " + err?.message);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+        {/* Header moderne avec dégradé Indigo/Slate */}
+        <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex justify-between items-start shrink-0 border-b border-indigo-900/50">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                <ICONS.Calendar className="w-3 h-3 text-amber-300" /> Action Groupée
+              </span>
+              <span className="text-[10px] font-black text-indigo-200 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15">
+                {selectedIds.length} résident(s) sélectionné(s)
+              </span>
+            </div>
+            <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+              Déclaration d'Indisponibilité en Masse — Résidents
+            </h3>
+            <p className="text-xs text-slate-300">
+              Sélectionnez les résidents par recherche de nom ou par niveau, puis définissez leur période d'absence commune.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Corps en 2 colonnes */}
+        <div className="p-5 sm:p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+          {successMsg && (
+            <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-2 shadow-sm animate-in slide-in-from-top-2">
+              <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Colonne Gauche (6 cols) : Sélection des résidents + Recherche par Nom */}
+            <div className="lg:col-span-6 space-y-3">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ICONS.Users className="w-4 h-4 text-indigo-600" />
+                    1. Choisir les Résidents
+                  </label>
+                  <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                    {selectedIds.length} / {residents.length} cochés
+                  </span>
+                </div>
+
+                {/* Champ de RECHERCHE PAR NOM avec autoFocus permanent et stable */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={searchName}
+                    onChange={(e) => setSearchName(e.target.value)}
+                    placeholder="Chercher un résident par son nom..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-800 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner"
+                  />
+                  {searchName && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchName("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200"
+                      title="Effacer la recherche"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtres par Niveau R1 - R4 */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setLevelFilter("ALL")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      levelFilter === "ALL"
+                        ? "bg-slate-800 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Tous ({residents.length})
+                  </button>
+                  {[1, 2, 3, 4].map((lvl) => {
+                    const count = residents.filter((r) => r.level === lvl).length;
+                    const isSel = levelFilter === lvl;
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => setLevelFilter(lvl as any)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                          isSel
+                            ? lvl === 1
+                              ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+                              : lvl === 2
+                                ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                                : lvl === 3
+                                  ? "bg-purple-600 border-purple-600 text-white shadow-sm"
+                                  : "bg-amber-600 border-amber-600 text-white shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        R{lvl} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Barre Tout Cocher / Tout Décocher */}
+                <div className="flex justify-between items-center pt-1 border-t border-slate-100 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllFiltered}
+                      className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                    >
+                      Tout cocher ({filteredResidents.length})
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={handleDeselectAllFiltered}
+                      className="font-bold text-slate-500 hover:text-slate-700 hover:underline"
+                    >
+                      Tout décocher
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium italic">
+                    {filteredResidents.length} affiché(s)
+                  </span>
+                </div>
+
+                {/* Liste défilable des résidents */}
+                <div className="max-h-72 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar border border-slate-100 rounded-xl p-1 bg-slate-50/50">
+                  {filteredResidents.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-xs italic">
+                      Aucun résident ne correspond à « {searchName} ».
+                    </div>
+                  ) : (
+                    filteredResidents.map((r) => {
+                      const isSelected = selectedIds.includes(r.id);
+                      const absCount = (r.absences || []).length;
+                      return (
+                        <div
+                          key={r.id}
+                          onClick={() => handleToggleResident(r.id)}
+                          className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-indigo-50/80 border-indigo-200 text-indigo-950 shadow-sm"
+                              : "bg-white border-slate-200/70 hover:bg-slate-100/60 text-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}} // géré par clic sur la ligne
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs truncate block text-slate-900">
+                                {r.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate block">
+                                {r.specialty || "Général"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            <span
+                              className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                                r.level === 1
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : r.level === 2
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : r.level === 3
+                                      ? "bg-purple-50 text-purple-700 border-purple-200"
+                                      : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}
+                            >
+                              R{r.level}
+                            </span>
+                            {absCount > 0 ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                {absCount} indispo.
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                                Dispo
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Colonne Droite (6 cols) : Configuration Date & Horaires */}
+            <div className="lg:col-span-6 space-y-3">
+              {/* 1. SECTION JOUR OU PÉRIODE */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <CalendarDays className="w-4 h-4 text-amber-600" />
+                    2. Choisir la Date ou la Période
+                  </label>
+                  {/* Switch Date Unique vs Période */}
+                  <div className="flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setDateMode("single")}
+                      className={`px-2.5 py-1 rounded-md transition-all ${
+                        dateMode === "single"
+                          ? "bg-white text-indigo-700 shadow-sm font-black"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      Date unique
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDateMode("range")}
+                      className={`px-2.5 py-1 rounded-md transition-all ${
+                        dateMode === "range"
+                          ? "bg-white text-indigo-700 shadow-sm font-black"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      Période (Du... Au...)
+                    </button>
+                  </div>
+                </div>
+
+                {dateMode === "single" ? (
+                  <div className="space-y-2">
+                    {sessionExamDates.length > 0 && (
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                          Jours d'examens (1-clic) :
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-1">
+                          {sessionExamDates.map((d) => {
+                            const isSelected = dateInput === d;
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => setDateInput(d)}
+                                className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-all flex items-center gap-1.5 ${
+                                  isSelected
+                                    ? "bg-indigo-600 border-indigo-600 text-white shadow-sm ring-2 ring-indigo-200"
+                                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                <span>{formatFrenchDateShort(d)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        {sessionExamDates.length > 0 ? "Ou autre date libre :" : "Sélectionner la date :"}
+                      </span>
+                      <input
+                        type="date"
+                        value={dateInput}
+                        onChange={(e) => setDateInput(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                          Du (Date début)
+                        </span>
+                        <input
+                          type="date"
+                          value={dateInput}
+                          onChange={(e) => setDateInput(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                          Au (Date fin incluse)
+                        </span>
+                        <input
+                          type="date"
+                          value={dateEndInput}
+                          onChange={(e) => setDateEndInput(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    {rangeDatesCount > 0 && (
+                      <div className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 text-center">
+                        ✨ {rangeDatesCount} jour(s) consécutif(s) seront configurés pour les résidents.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. SECTION CRÉNEAU HORAIRE */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock3 className="w-4 h-4 text-amber-600" />
+                  3. Choisir le Créneau
+                </label>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset("full")}
+                    className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      timePreset === "full"
+                        ? "bg-indigo-600 border-indigo-600 text-white shadow-md font-black"
+                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                    }`}
+                  >
+                    <span className="text-sm">🌕</span>
+                    <span className="text-xs">Journée</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset("morning")}
+                    className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      timePreset === "morning"
+                        ? "bg-amber-500 border-amber-500 text-white shadow-md font-black"
+                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                    }`}
+                  >
+                    <Sun className={`w-3.5 h-3.5 ${timePreset === "morning" ? "text-white" : "text-amber-500"}`} />
+                    <span className="text-xs">Matin</span>
+                    <span className={`text-[8px] ${timePreset === "morning" ? "text-amber-100" : "text-slate-400"}`}>08h-13h</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset("afternoon")}
+                    className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      timePreset === "afternoon"
+                        ? "bg-blue-600 border-blue-600 text-white shadow-md font-black"
+                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                    }`}
+                  >
+                    <Moon className={`w-3.5 h-3.5 ${timePreset === "afternoon" ? "text-white" : "text-blue-500"}`} />
+                    <span className="text-xs">A.-midi</span>
+                    <span className={`text-[8px] ${timePreset === "afternoon" ? "text-blue-100" : "text-slate-400"}`}>13h-18h</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset("custom")}
+                    className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      timePreset === "custom"
+                        ? "bg-purple-600 border-purple-600 text-white shadow-md font-black"
+                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                    }`}
+                  >
+                    <span className="text-sm">⏱️</span>
+                    <span className="text-xs">Libre</span>
+                    <span className={`text-[8px] ${timePreset === "custom" ? "text-purple-100" : "text-slate-400"}`}>Heures</span>
+                  </button>
+                </div>
+
+                {/* Épreuves du jour : 1-clic pour caler sur une épreuve précise */}
+                {dateMode === "single" && examsOnSelectedDate.length > 0 && (
+                  <div className="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-1.5">
+                    <span className="text-[9px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-600" />
+                      Épreuves de ce jour (1-clic) :
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {examsOnSelectedDate.map((ex) => {
+                        const endStr = getExamEndStr(ex.time, ex.duration);
+                        const isMatching =
+                          isPartial &&
+                          startTime === ex.time &&
+                          endTime === endStr;
+                        return (
+                          <button
+                            key={ex.id}
+                            type="button"
+                            onClick={() => handleSelectExamSlot(ex)}
+                            className={`text-[11px] px-2 py-1 rounded-lg border font-bold transition-all text-left ${
+                              isMatching
+                                ? "bg-amber-600 border-amber-600 text-white shadow-sm"
+                                : "bg-white border-amber-200 text-amber-950 hover:bg-amber-100/60"
+                            }`}
+                          >
+                            <span className="font-black">{ex.time} → {endStr}</span>
+                            <span className="ml-1 text-[9px] opacity-80">({ex.promo} {ex.subject})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {timePreset === "custom" && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                        Début
+                      </span>
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                        Fin
+                      </span>
+                      <input
+                        type="time"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Bouton d'application */}
+                <button
+                  type="button"
+                  disabled={isApplying || selectedIds.length === 0}
+                  onClick={handleApply}
+                  className={`w-full mt-3 py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 ${
+                    isApplying || selectedIds.length === 0
+                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-500/25 active:scale-[0.98]"
+                  }`}
+                >
+                  {isApplying ? (
+                    <span>Enregistrement en cours...</span>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>
+                        Appliquer à {selectedIds.length} résident(s)
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+          <span className="text-xs text-slate-500 font-bold">
+            {selectedIds.length} résident(s) sélectionné(s) sur {residents.length}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface ConfigTabProps {
   profs: Professor[];
@@ -174,10 +929,18 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     });
   }, [exams, examSearch]);
   const [editingAbsenceId, setEditingAbsenceId] = useState<string | null>(null);
+  const [absenceDateMode, setAbsenceDateMode] = useState<"single" | "range">("single");
+  const [absenceDateInput, setAbsenceDateInput] = useState("");
+  const [absenceDateEndInput, setAbsenceDateEndInput] = useState("");
+  const [absenceTimePreset, setAbsenceTimePreset] = useState<"full" | "morning" | "afternoon" | "custom">("full");
   const [absenceIsPartial, setAbsenceIsPartial] = useState(false);
   const [absenceStartTime, setAbsenceStartTime] = useState("");
   const [absenceEndTime, setAbsenceEndTime] = useState("");
-  const [absenceDateInput, setAbsenceDateInput] = useState("");
+
+  // État pour l'ouverture de l'absence groupée des résidents
+  const [isBulkResidentAbsenceOpen, setIsBulkResidentAbsenceOpen] = useState(false);
+  const [bulkResidentInitialIds, setBulkResidentInitialIds] = useState<string[]>([]);
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingSubjectsId, setEditingSubjectsId] = useState<string | null>(
     null,
@@ -286,6 +1049,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             rank: prof.rank,
             responsiblePromo: prof.responsiblePromo,
             subjects: prof.subjects,
+            absences: prof.absences,
           });
           successCount++;
         } catch (err: any) {
@@ -299,6 +1063,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 rank: prof.rank,
                 responsiblePromo: prof.responsiblePromo,
                 subjects: prof.subjects,
+                absences: prof.absences,
               });
               successCount++;
             } catch (updateErr: any) {
@@ -320,6 +1085,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             name: resident.name,
             level: resident.level,
             specialty: resident.specialty,
+            absences: resident.absences,
           });
           successCount++;
         } catch (err: any) {
@@ -332,6 +1098,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                 name: resident.name,
                 level: resident.level,
                 specialty: resident.specialty,
+                absences: resident.absences,
               });
               successCount++;
             } catch (updateErr: any) {
@@ -423,6 +1190,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                   rank: prof.rank,
                   responsiblePromo: prof.responsiblePromo,
                   subjects: prof.subjects || [],
+                  absences: prof.absences || [],
                 });
                 successCount++;
               } catch (err: any) {
@@ -437,6 +1205,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       rank: prof.rank,
                       responsiblePromo: prof.responsiblePromo,
                       subjects: prof.subjects || [],
+                      absences: prof.absences || [],
                     });
                     successCount++;
                   } catch {
@@ -458,6 +1227,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                   name: resident.name,
                   level: resident.level,
                   specialty: resident.specialty,
+                  absences: resident.absences || [],
                 });
                 successCount++;
               } catch (err: any) {
@@ -471,6 +1241,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       name: resident.name,
                       level: resident.level,
                       specialty: resident.specialty,
+                      absences: resident.absences || [],
                     });
                     successCount++;
                   } catch {
@@ -963,14 +1734,14 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     document.body.removeChild(link);
   };
 
-  const addAbsence = (
+  const addAbsencesBatch = (
     personId: string,
-    date: string,
+    dates: string[],
     isPartial: boolean,
     startTime?: string,
     endTime?: string,
   ) => {
-    if (!date) return;
+    if (!dates || dates.length === 0) return;
     if (isPartial && (!startTime || !endTime)) {
       alert("Veuillez renseigner l'heure de début et l'heure de fin.");
       return;
@@ -979,46 +1750,59 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       alert("L'heure de fin doit être après l'heure de début.");
       return;
     }
-    const newAbsence: Absence = isPartial
-      ? { date, startTime, endTime }
-      : { date };
+    const newAbsences: Absence[] = dates.map((date) =>
+      isPartial ? { date, startTime, endTime } : { date },
+    );
 
     if (subTab === "profs") {
       const prof = profs.find((p) => p.id === personId);
       if (prof) {
-        const isDuplicate = prof.absences.some(
-          (a) =>
-            a.date === date &&
-            a.startTime === startTime &&
-            a.endTime === endTime,
+        const existing = prof.absences || [];
+        const toAdd = newAbsences.filter(
+          (na) =>
+            !existing.some(
+              (a) =>
+                a.date === na.date &&
+                (a.startTime || "") === (na.startTime || "") &&
+                (a.endTime || "") === (na.endTime || ""),
+            ),
         );
-        if (!isDuplicate)
-          updateProf(personId, "absences", [...prof.absences, newAbsence]);
+        if (toAdd.length > 0) {
+          updateProf(personId, "absences", [...existing, ...toAdd]);
+        }
       }
     } else if (subTab === "residents") {
       const res = residents.find((r) => r.id === personId);
       if (res) {
-        const isDuplicate = res.absences.some(
-          (a) =>
-            a.date === date &&
-            a.startTime === startTime &&
-            a.endTime === endTime,
+        const existing = res.absences || [];
+        const toAdd = newAbsences.filter(
+          (na) =>
+            !existing.some(
+              (a) =>
+                a.date === na.date &&
+                (a.startTime || "") === (na.startTime || "") &&
+                (a.endTime || "") === (na.endTime || ""),
+            ),
         );
-        if (!isDuplicate)
-          updateResident(personId, "absences", [...res.absences, newAbsence]);
+        if (toAdd.length > 0) {
+          updateResident(personId, "absences", [...existing, ...toAdd]);
+        }
       }
     } else if (subTab === "proctors") {
       const proc = proctors.find((p) => p.id === personId);
       if (proc) {
-        const absences = proc.absences || [];
-        const isDuplicate = absences.some(
-          (a) =>
-            a.date === date &&
-            a.startTime === startTime &&
-            a.endTime === endTime,
+        const existing = proc.absences || [];
+        const toAdd = newAbsences.filter(
+          (na) =>
+            !existing.some(
+              (a) =>
+                a.date === na.date &&
+                (a.startTime || "") === (na.startTime || "") &&
+                (a.endTime || "") === (na.endTime || ""),
+            ),
         );
-        if (!isDuplicate) {
-          const newAbs = [...absences, newAbsence];
+        if (toAdd.length > 0) {
+          const newAbs = [...existing, ...toAdd];
           setProctors((prev) =>
             prev.map((p) => (p.id === personId ? { ...p, absences: newAbs } : p)),
           );
@@ -1026,6 +1810,16 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         }
       }
     }
+  };
+
+  const addAbsence = (
+    personId: string,
+    date: string,
+    isPartial: boolean,
+    startTime?: string,
+    endTime?: string,
+  ) => {
+    addAbsencesBatch(personId, [date], isPartial, startTime, endTime);
   };
 
   const removeAbsence = (personId: string, absence: Absence) => {
@@ -1083,12 +1877,13 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
   };
 
   const addSubject = (profId: string, subject: string) => {
-    if (!subject.trim()) return;
+    const cleanSubject = subject.trim();
+    if (!cleanSubject) return;
     const updatedProfs = profs.map((p) => {
       if (p.id === profId) {
         // Éviter les doublons
-        if (!p.subjects.includes(subject)) {
-          return { ...p, subjects: [...p.subjects, subject] };
+        if (!p.subjects.includes(cleanSubject)) {
+          return { ...p, subjects: [...p.subjects, cleanSubject] };
         }
       }
       return p;
@@ -1113,6 +1908,50 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
         }
       } catch (err) {
         console.warn("Synchronisation matière échouée", err);
+      }
+    })();
+  };
+
+  const addMultipleSubjects = (profId: string, subjectsToAdd: string[]) => {
+    const cleanList = subjectsToAdd.map((s) => s.trim()).filter(Boolean);
+    if (cleanList.length === 0) return;
+    const updatedProfs = profs.map((p) => {
+      if (p.id === profId) {
+        const currentLower = new Set(
+          p.subjects.map((s) => s.trim().toLowerCase()),
+        );
+        const toAppend: string[] = [];
+        cleanList.forEach((s) => {
+          if (!currentLower.has(s.toLowerCase())) {
+            currentLower.add(s.toLowerCase());
+            toAppend.push(s);
+          }
+        });
+        if (toAppend.length === 0) return p;
+        return { ...p, subjects: [...p.subjects, ...toAppend] };
+      }
+      return p;
+    });
+    setProfs(updatedProfs);
+    setNewSubjectInput("");
+
+    // Synchroniser avec le backend
+    (async () => {
+      try {
+        const backend = await syncWithBackend();
+        if (backend?.isBackendAvailable) {
+          const prof = updatedProfs.find((p) => p.id === profId);
+          if (prof) {
+            await updateProfessorApi(profId, {
+              name: prof.name,
+              rank: prof.rank,
+              responsiblePromo: prof.responsiblePromo,
+              subjects: prof.subjects,
+            } as any);
+          }
+        }
+      } catch (err) {
+        console.warn("Synchronisation matières multiples échouée", err);
       }
     })();
   };
@@ -1209,6 +2048,14 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     );
   };
 
+  // Dates uniques d'examens dans la session
+  const sessionExamDates = useMemo(() => {
+    const dates = Array.from(
+      new Set(exams.map((e) => e.date).filter(Boolean)),
+    ).sort();
+    return dates;
+  }, [exams]);
+
   const AbsenceModal = () => {
     const person =
       subTab === "profs"
@@ -1219,19 +2066,85 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
     if (!person) return null;
 
-    const handleAdd = () => {
-      addAbsence(
-        person.id,
-        absenceDateInput,
-        absenceIsPartial,
-        absenceIsPartial ? absenceStartTime : undefined,
-        absenceIsPartial ? absenceEndTime : undefined,
-      );
-      // Reset form
+    // Examens programmés à la date sélectionnée
+    const examsOnSelectedDate = useMemo(() => {
+      if (!absenceDateInput) return [];
+      return exams
+        .filter((e) => e.date === absenceDateInput && e.time)
+        .sort((a, b) => a.time.localeCompare(b.time));
+    }, [absenceDateInput]);
+
+    const handleSelectPreset = (preset: "full" | "morning" | "afternoon" | "custom") => {
+      setAbsenceTimePreset(preset);
+      if (preset === "full") {
+        setAbsenceIsPartial(false);
+        setAbsenceStartTime("");
+        setAbsenceEndTime("");
+      } else if (preset === "morning") {
+        setAbsenceIsPartial(true);
+        setAbsenceStartTime("08:00");
+        setAbsenceEndTime("13:00");
+      } else if (preset === "afternoon") {
+        setAbsenceIsPartial(true);
+        setAbsenceStartTime("13:00");
+        setAbsenceEndTime("18:00");
+      } else {
+        setAbsenceIsPartial(true);
+        if (!absenceStartTime) setAbsenceStartTime("09:00");
+        if (!absenceEndTime) setAbsenceEndTime("11:00");
+      }
+    };
+
+    const handleSelectExamSlot = (ex: Exam) => {
+      setAbsenceTimePreset("custom");
+      setAbsenceIsPartial(true);
+      setAbsenceStartTime(ex.time);
+      setAbsenceEndTime(getExamEndStr(ex.time, ex.duration));
+    };
+
+    const handleClose = () => {
+      setEditingAbsenceId(null);
+      setAbsenceDateMode("single");
       setAbsenceDateInput("");
+      setAbsenceDateEndInput("");
+      setAbsenceTimePreset("full");
+      setAbsenceIsPartial(false);
       setAbsenceStartTime("");
       setAbsenceEndTime("");
-      setAbsenceIsPartial(false);
+    };
+
+    const handleAdd = () => {
+      if (absenceDateMode === "single") {
+        if (!absenceDateInput) {
+          alert("Veuillez sélectionner une date.");
+          return;
+        }
+        addAbsence(
+          person.id,
+          absenceDateInput,
+          absenceIsPartial,
+          absenceIsPartial ? absenceStartTime : undefined,
+          absenceIsPartial ? absenceEndTime : undefined,
+        );
+      } else {
+        if (!absenceDateInput || !absenceDateEndInput) {
+          alert("Veuillez renseigner la date de début et la date de fin.");
+          return;
+        }
+        const dates = getDatesInRange(absenceDateInput, absenceDateEndInput);
+        if (dates.length === 0) {
+          alert("La date de début doit être antérieure ou égale à la date de fin.");
+          return;
+        }
+        addAbsencesBatch(
+          person.id,
+          dates,
+          absenceIsPartial,
+          absenceIsPartial ? absenceStartTime : undefined,
+          absenceIsPartial ? absenceEndTime : undefined,
+        );
+        setAbsenceDateEndInput("");
+      }
     };
 
     const personAbsences = Array.isArray(person.absences) ? person.absences : [];
@@ -1240,172 +2153,431 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
       return (a.startTime || "").localeCompare(b.startTime || "");
     });
 
+    const roleBadge = () => {
+      if (subTab === "profs") {
+        const p = person as Professor;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-indigo-100 border border-white/20">
+            <span>{p.rank === "Pr" ? "Professeur" : "Docteur"}</span>
+            {p.responsiblePromo && (
+              <span className="text-[10px] text-amber-300 font-bold">
+                • Resp {p.responsiblePromo}
+              </span>
+            )}
+          </span>
+        );
+      }
+      if (subTab === "residents") {
+        const r = person as Resident;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-blue-100 border border-white/20">
+            <span>R{r.level}</span>
+            <span className="text-[10px] text-blue-200 font-medium">
+              • {r.specialty}
+            </span>
+          </span>
+        );
+      }
+      const pr = person as Proctor;
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-emerald-100 border border-white/20">
+          <span>Surveillant</span>
+          <span className="text-[10px] text-emerald-200 font-medium">
+            • {pr.specialty || "Personnel"}
+          </span>
+        </span>
+      );
+    };
+
+    const rangeDatesCount =
+      absenceDateMode === "range" && absenceDateInput && absenceDateEndInput
+        ? getDatesInRange(absenceDateInput, absenceDateEndInput).length
+        : 0;
+
     return (
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-          {/* Header */}
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-indigo-50/30">
-            <div>
-              <h3 className="font-black text-indigo-950 uppercase tracking-tight">
-                Exceptions &amp; Congés
-              </h3>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+          {/* Header moderne avec dégradé Indigo */}
+          <div className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 text-white flex justify-between items-start shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 bg-white/10 px-2 py-0.5 rounded-md">
+                  Gestion des Indisponibilités
+                </span>
+                {roleBadge()}
+              </div>
+              <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
                 {person.name}
+              </h3>
+              <p className="text-xs text-indigo-200">
+                Définissez les dates et créneaux horaires d'absence pour ce surveillant.
               </p>
             </div>
             <button
-              onClick={() => {
-                setEditingAbsenceId(null);
-                setAbsenceIsPartial(false);
-                setAbsenceDateInput("");
-                setAbsenceStartTime("");
-                setAbsenceEndTime("");
-              }}
-              className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              onClick={handleClose}
+              className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"
             >
-              <ICONS.Plus className="w-5 h-5 rotate-45 text-slate-400" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Form */}
-          <div className="p-6 space-y-4">
-            <div className="space-y-3">
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">
-                Ajouter une période d'indisponibilité
-              </label>
-
-              {/* Date */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Date
-                </span>
-                <input
-                  type="date"
-                  value={absenceDateInput}
-                  onChange={(e) => setAbsenceDateInput(e.target.value)}
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
+          {/* Formulaire & Liste dans conteneur défilable */}
+          <div className="p-5 sm:p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/40">
+            {/* 1. SECTION CHOIX DU JOUR OU DE LA PÉRIODE */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarDays className="w-4 h-4 text-indigo-600" />
+                  1. Choisir le(s) Jour(s)
+                </label>
+                {/* Switch Date Unique vs Période */}
+                <div className="flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setAbsenceDateMode("single")}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      absenceDateMode === "single"
+                        ? "bg-white text-indigo-700 shadow-sm font-black"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Date unique
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbsenceDateMode("range")}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      absenceDateMode === "range"
+                        ? "bg-white text-indigo-700 shadow-sm font-black"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Période (Du... Au...)
+                  </button>
+                </div>
               </div>
 
-              {/* Toggle Partielle */}
-              <label className="flex items-center gap-3 cursor-pointer select-none group">
-                <div
-                  onClick={() => setAbsenceIsPartial(!absenceIsPartial)}
-                  className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
-                    absenceIsPartial ? "bg-indigo-600" : "bg-slate-200"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                      absenceIsPartial ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
+              {/* Mode Date Unique : Puces 1-clic des dates d'examen */}
+              {absenceDateMode === "single" ? (
+                <div className="space-y-2">
+                  {sessionExamDates.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                        Jours d'examens planifiés (1-clic) :
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                        {sessionExamDates.map((d) => {
+                          const isSelected = absenceDateInput === d;
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setAbsenceDateInput(d)}
+                              className={`text-xs px-2.5 py-1.5 rounded-lg border font-bold transition-all flex items-center gap-1.5 ${
+                                isSelected
+                                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm ring-2 ring-indigo-200"
+                                  : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300"
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              <span>{formatFrenchDateShort(d)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Input date personnalisée */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      {sessionExamDates.length > 0 ? "Ou autre date libre :" : "Sélectionner la date :"}
+                    </span>
+                    <input
+                      type="date"
+                      value={absenceDateInput}
+                      onChange={(e) => setAbsenceDateInput(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    />
+                  </div>
                 </div>
-                <span className="text-xs font-bold text-slate-600">
-                  Indisponibilité partielle{" "}
-                  <span className="text-slate-400 font-normal">
-                    (par heure)
-                  </span>
-                </span>
+              ) : (
+                /* Mode Période : Du ... Au ... */
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Du (Date début)
+                      </span>
+                      <input
+                        type="date"
+                        value={absenceDateInput}
+                        onChange={(e) => setAbsenceDateInput(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Au (Date fin incluse)
+                      </span>
+                      <input
+                        type="date"
+                        value={absenceDateEndInput}
+                        onChange={(e) => setAbsenceDateEndInput(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  {rangeDatesCount > 0 && (
+                    <div className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-lg p-2 text-center">
+                      ✨ {rangeDatesCount} jour(s) de congé consécutif(s) seront configurés d'un coup.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2. SECTION CHOIX DU CRÉNEAU HORAIRE */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+              <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock3 className="w-4 h-4 text-indigo-600" />
+                2. Choisir le Créneau d'Indisponibilité
               </label>
 
-              {/* Heures — affichées uniquement si partielle */}
-              {absenceIsPartial && (
-                <div className="flex gap-3 animate-in slide-in-from-top-2 duration-150">
-                  <div className="flex-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Heure début
+              {/* 4 Boutons de présets rapides */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset("full")}
+                  className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                    absenceTimePreset === "full"
+                      ? "bg-indigo-600 border-indigo-600 text-white shadow-md ring-2 ring-indigo-200 font-black"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                  }`}
+                >
+                  <span className="text-sm">🌕</span>
+                  <span className="text-xs">Toute la journée</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset("morning")}
+                  className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                    absenceTimePreset === "morning"
+                      ? "bg-amber-500 border-amber-500 text-white shadow-md ring-2 ring-amber-200 font-black"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                  }`}
+                >
+                  <Sun className={`w-4 h-4 ${absenceTimePreset === "morning" ? "text-white" : "text-amber-500"}`} />
+                  <span className="text-xs">Matinée</span>
+                  <span className={`text-[9px] ${absenceTimePreset === "morning" ? "text-amber-100" : "text-slate-400"}`}>08h - 13h</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset("afternoon")}
+                  className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                    absenceTimePreset === "afternoon"
+                      ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-200 font-black"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                  }`}
+                >
+                  <Moon className={`w-4 h-4 ${absenceTimePreset === "afternoon" ? "text-white" : "text-blue-500"}`} />
+                  <span className="text-xs">Après-midi</span>
+                  <span className={`text-[9px] ${absenceTimePreset === "afternoon" ? "text-blue-100" : "text-slate-400"}`}>13h - 18h</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset("custom")}
+                  className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                    absenceTimePreset === "custom"
+                      ? "bg-purple-600 border-purple-600 text-white shadow-md ring-2 ring-purple-200 font-black"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-bold"
+                  }`}
+                >
+                  <span className="text-sm">⏱️</span>
+                  <span className="text-xs">Sur mesure</span>
+                  <span className={`text-[9px] ${absenceTimePreset === "custom" ? "text-purple-100" : "text-slate-400"}`}>Par heure</span>
+                </button>
+              </div>
+
+              {/* Épreuves du jour : 1-clic pour choisir l'horaire précis d'une épreuve */}
+              {absenceDateMode === "single" && examsOnSelectedDate.length > 0 && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                  <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-600" />
+                    Épreuves programmées ce jour-là (1-clic pour caler les heures exactes) :
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {examsOnSelectedDate.map((ex) => {
+                      const endStr = getExamEndStr(ex.time, ex.duration);
+                      const isMatching =
+                        absenceIsPartial &&
+                        absenceStartTime === ex.time &&
+                        absenceEndTime === endStr;
+                      return (
+                        <button
+                          key={ex.id}
+                          type="button"
+                          onClick={() => handleSelectExamSlot(ex)}
+                          className={`text-xs px-2.5 py-1.5 rounded-lg border font-bold transition-all text-left ${
+                            isMatching
+                              ? "bg-amber-600 border-amber-600 text-white shadow-sm ring-2 ring-amber-200"
+                              : "bg-white border-amber-200 text-amber-950 hover:bg-amber-100/60"
+                          }`}
+                        >
+                          <span className="font-black">{ex.time} → {endStr}</span>
+                          <span className={`ml-1.5 text-[10px] ${isMatching ? "text-amber-100" : "text-amber-800"}`}>
+                            ({ex.promo} {ex.subject})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Saisie d'heures personnalisées */}
+              {absenceTimePreset === "custom" && (
+                <div className="grid grid-cols-2 gap-3 pt-1 animate-in slide-in-from-top-1 duration-150">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Heure de début
                     </span>
                     <input
                       type="time"
                       value={absenceStartTime}
                       onChange={(e) => setAbsenceStartTime(e.target.value)}
-                      className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
-                  <div className="flex-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Heure fin
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Heure de fin
                     </span>
                     <input
                       type="time"
                       value={absenceEndTime}
                       onChange={(e) => setAbsenceEndTime(e.target.value)}
-                      className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
                 </div>
               )}
 
+              {/* Bouton d'ajout */}
               <button
+                type="button"
                 onClick={handleAdd}
-                className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-black hover:bg-indigo-700 transition-all active:scale-95"
+                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-black text-sm tracking-wide shadow-md shadow-indigo-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
-                + AJOUTER
+                <ICONS.Plus className="w-4 h-4 stroke-[3]" />
+                <span>
+                  {absenceDateMode === "range" && rangeDatesCount > 0
+                    ? `Ajouter le congé (${rangeDatesCount} jours)`
+                    : absenceDateInput
+                      ? `Ajouter l'indisponibilité (${formatFrenchDateShort(absenceDateInput)})`
+                      : "Ajouter cette indisponibilité"}
+                </span>
               </button>
             </div>
 
-            {/* Liste des absences */}
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Périodes configurées
-              </label>
-              <div className="max-h-52 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
+            {/* 3. SECTION LISTE DES PÉRIODES CONFIGURÉES */}
+            <div className="space-y-2.5">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-black text-slate-600 uppercase tracking-wider">
+                  Périodes d'indisponibilité enregistrées ({sortedAbsences.length})
+                </label>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
                 {sortedAbsences.length === 0 ? (
-                  <div className="text-center py-6 text-slate-300 italic text-xs">
-                    Aucune absence enregistrée
+                  <div className="text-center py-8 bg-white border border-dashed border-slate-200 rounded-2xl p-4 text-slate-400 text-xs italic">
+                    Aucune absence enregistrée. Cette personne est disponible sur toute la session.
                   </div>
                 ) : (
-                  sortedAbsences.map((absence, idx) => (
-                    <div
-                      key={`${absence.date}-${absence.startTime ?? ""}-${idx}`}
-                      className={`flex justify-between items-center p-2.5 rounded-lg border group ${
-                        absence.startTime
-                          ? "bg-amber-50 border-amber-100"
-                          : "bg-slate-50 border-slate-100"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <ICONS.Calendar
-                          className={`w-3.5 h-3.5 ${absence.startTime ? "text-amber-400" : "text-indigo-400"}`}
-                        />
-                        <div>
-                          <span className="text-xs font-bold text-slate-700 block">
-                            {formatAbsenceLabel(absence)}
-                          </span>
-                          {absence.startTime && (
-                            <span className="text-[10px] font-medium text-amber-600 uppercase tracking-wide">
-                              Partielle
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeAbsence(person.id, absence)}
-                        className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors"
+                  sortedAbsences.map((absence, idx) => {
+                    const isMorning = absence.startTime === "08:00" && absence.endTime === "13:00";
+                    const isAfternoon = absence.startTime === "13:00" && absence.endTime === "18:00";
+                    const isFull = !absence.startTime || !absence.endTime;
+
+                    return (
+                      <div
+                        key={`${absence.date}-${absence.startTime ?? ""}-${idx}`}
+                        className="flex justify-between items-center p-3 rounded-xl bg-white border border-slate-200/80 shadow-sm hover:border-slate-300 transition-all group"
                       >
-                        <ICONS.Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              isFull
+                                ? "bg-indigo-50 text-indigo-600"
+                                : isMorning
+                                  ? "bg-amber-50 text-amber-600"
+                                  : isAfternoon
+                                    ? "bg-blue-50 text-blue-600"
+                                    : "bg-purple-50 text-purple-600"
+                            }`}
+                          >
+                            {isFull ? (
+                              <CalendarDays className="w-4 h-4" />
+                            ) : isMorning ? (
+                              <Sun className="w-4 h-4" />
+                            ) : isAfternoon ? (
+                              <Moon className="w-4 h-4" />
+                            ) : (
+                              <Clock3 className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-xs font-black text-slate-800 block">
+                              {formatFrenchDateShort(absence.date)}
+                            </span>
+                            <span
+                              className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md border mt-0.5 ${
+                                isFull
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : isMorning
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : isAfternoon
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : "bg-purple-50 text-purple-700 border-purple-200"
+                              }`}
+                            >
+                              {isFull
+                                ? "Journée entière"
+                                : isMorning
+                                  ? "Matin (08h00 - 13h00)"
+                                  : isAfternoon
+                                    ? "Après-midi (13h00 - 18h00)"
+                                    : `${absence.startTime} → ${absence.endTime}`}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAbsence(person.id, absence)}
+                          title="Supprimer cette indisponibilité"
+                          className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                        >
+                          <ICONS.Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
             <button
-              onClick={() => {
-                setEditingAbsenceId(null);
-                setAbsenceIsPartial(false);
-                setAbsenceDateInput("");
-                setAbsenceStartTime("");
-                setAbsenceEndTime("");
-              }}
-              className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
+              type="button"
+              onClick={handleClose}
+              className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
             >
-              Terminer la gestion
+              Fermer
             </button>
           </div>
         </div>
@@ -1415,48 +2587,310 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
 
   const SubjectsModal = () => {
     const prof = profs.find((p) => p.id === editingSubjectsId);
+    const [suggestionSearch, setSuggestionSearch] = useState("");
+    const [selectedPromoFilter, setSelectedPromoFilter] = useState<string>("ALL");
+
+    // Extraction et détection de toutes les matières du planning global
+    const planningSubjects = useMemo(() => {
+      const map = new Map<
+        string,
+        { name: string; promos: Set<string>; isComposite: boolean }
+      >();
+
+      exams.forEach((exam) => {
+        if (!exam.subject || !exam.subject.trim()) return;
+        const raw = exam.subject.trim();
+
+        // 1. Titre complet de la matière de l'examen
+        if (!map.has(raw)) {
+          map.set(raw, { name: raw, promos: new Set(), isComposite: false });
+        }
+        if (exam.promo) {
+          map.get(raw)!.promos.add(exam.promo);
+        }
+
+        // 2. Si matière composite (séparée par /), extraire également les sous-matières individuelles
+        if (raw.includes("/")) {
+          const parts = raw
+            .split("/")
+            .map((p) => p.trim())
+            .filter((p) => p.length > 0);
+          if (parts.length > 1) {
+            parts.forEach((part) => {
+              if (!map.has(part)) {
+                map.set(part, { name: part, promos: new Set(), isComposite: true });
+              }
+              if (exam.promo) {
+                map.get(part)!.promos.add(exam.promo);
+              }
+            });
+          }
+        }
+      });
+
+      return Array.from(map.values()).map((item) => ({
+        name: item.name,
+        promos: Array.from(item.promos),
+        isComposite: item.isComposite,
+      }));
+    }, [exams]);
+
+    // Promos distinctes trouvées dans le planning pour les filtres rapides
+    const distinctPlanningPromos = useMemo(() => {
+      const set = new Set<string>();
+      planningSubjects.forEach((ps) => {
+        ps.promos.forEach((pr) => set.add(pr));
+      });
+      return Array.from(set).sort();
+    }, [planningSubjects]);
 
     if (!prof) return null;
+
+    const currentSubjectLowerSet = new Set(
+      (prof.subjects || []).map((s) => s.trim().toLowerCase()),
+    );
+
+    // Matières suggérées disponibles (non encore attribuées à cet enseignant)
+    const availablePlanningSubjects = planningSubjects
+      .filter((item) => !currentSubjectLowerSet.has(item.name.trim().toLowerCase()))
+      .filter((item) => {
+        if (selectedPromoFilter === "ALL") return true;
+        return item.promos.includes(selectedPromoFilter as Promo);
+      })
+      .filter((item) => {
+        if (!suggestionSearch.trim()) return true;
+        const q = suggestionSearch.toLowerCase().trim();
+        return (
+          item.name.toLowerCase().includes(q) ||
+          item.promos.some((pr) => pr.toLowerCase().includes(q))
+        );
+      })
+      .sort((a, b) => {
+        const aIsPromo =
+          prof.responsiblePromo && a.promos.includes(prof.responsiblePromo);
+        const bIsPromo =
+          prof.responsiblePromo && b.promos.includes(prof.responsiblePromo);
+        if (aIsPromo && !bIsPromo) return -1;
+        if (!aIsPromo && bIsPromo) return 1;
+        return a.name.localeCompare(b.name, "fr", { sensitivity: "base" });
+      });
+
+    // Matières non encore attribuées de la promo dont l'enseignant est responsable
+    const unaddedPromoSubjects = prof.responsiblePromo
+      ? planningSubjects
+          .filter(
+            (item) =>
+              item.promos.includes(prof.responsiblePromo!) &&
+              !currentSubjectLowerSet.has(item.name.trim().toLowerCase()),
+          )
+          .map((item) => item.name)
+      : [];
 
     const handleAddSubject = () => {
       addSubject(prof.id, newSubjectInput);
     };
 
     return (
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
           {/* Header */}
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-emerald-50/30">
-            <div>
-              <h3 className="font-black text-emerald-950 uppercase tracking-tight">
-                Gestion des Matières
-              </h3>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                {prof.name} ({prof.rank})
-              </p>
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-emerald-50 via-teal-50 to-white shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-200">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-slate-900 text-base uppercase tracking-tight">
+                    Gestion des Matières
+                  </h3>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {prof.rank}
+                  </span>
+                  {prof.responsiblePromo && (
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                      Resp. {prof.responsiblePromo}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 font-bold">
+                  {prof.name || "Enseignant sans nom"}
+                </p>
+              </div>
             </div>
             <button
               onClick={() => {
                 setEditingSubjectsId(null);
                 setNewSubjectInput("");
               }}
-              className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              className="p-2 hover:bg-slate-200/70 rounded-full transition-colors text-slate-400 hover:text-slate-700"
+              title="Fermer"
             >
-              <ICONS.Plus className="w-5 h-5 rotate-45 text-slate-400" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Form */}
-          <div className="p-6 space-y-4">
-            <div className="space-y-3">
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">
-                Ajouter une matière
+          {/* Form & Content */}
+          <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+            {/* 1. Bloc Matières Détectées dans le Planning Global */}
+            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      Matières détectées dans le planning global
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {planningSubjects.length > 0
+                        ? `${availablePlanningSubjects.length} disponible(s) sur ${planningSubjects.length} · 1-clic pour ajouter`
+                        : "Aucun examen avec matière dans le planning"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bouton rapide d'ajout groupé pour promo responsable */}
+                {prof.responsiblePromo && unaddedPromoSubjects.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addMultipleSubjects(prof.id, unaddedPromoSubjects)
+                    }
+                    className="text-[11px] font-black bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                    title={`Ajouter d'un coup toutes les matières de sa promo (${prof.responsiblePromo})`}
+                  >
+                    <ICONS.Plus className="w-3 h-3" />
+                    Tout ajouter ({unaddedPromoSubjects.length} de{" "}
+                    {prof.responsiblePromo})
+                  </button>
+                )}
+              </div>
+
+              {/* Filtres et recherche sur les matières détectées */}
+              {planningSubjects.length > 0 && (
+                <div className="space-y-2 pt-1 border-t border-slate-200/70">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={suggestionSearch}
+                      onChange={(e) => setSuggestionSearch(e.target.value)}
+                      placeholder="Filtrer les matières détectées..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    />
+                    {suggestionSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setSuggestionSearch("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        title="Effacer la recherche"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filtres par promo */}
+                  {distinctPlanningPromos.length > 1 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black text-slate-400 uppercase mr-1">
+                        Promo :
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPromoFilter("ALL")}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                          selectedPromoFilter === "ALL"
+                            ? "bg-slate-800 text-white shadow-sm"
+                            : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        Toutes
+                      </button>
+                      {distinctPlanningPromos.map((pr) => (
+                        <button
+                          key={pr}
+                          type="button"
+                          onClick={() => setSelectedPromoFilter(pr)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                            selectedPromoFilter === pr
+                              ? "bg-emerald-600 text-white shadow-sm"
+                              : "bg-white text-slate-600 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700"
+                          }`}
+                        >
+                          {pr}
+                          {prof.responsiblePromo === pr && " ★"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Liste de badges à 1-clic */}
+              <div className="max-h-40 overflow-y-auto pr-1 flex flex-wrap gap-1.5 custom-scrollbar pt-1">
+                {planningSubjects.length === 0 ? (
+                  <div className="text-center py-4 w-full text-xs text-slate-400 italic">
+                    Aucune matière trouvée dans le planning global.
+                  </div>
+                ) : availablePlanningSubjects.length === 0 ? (
+                  <div className="w-full text-center py-3 bg-white/80 rounded-lg border border-dashed border-emerald-200">
+                    <p className="text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      {suggestionSearch
+                        ? "Aucune matière ne correspond à votre recherche."
+                        : "Toutes les matières du planning sont déjà associées à cet enseignant !"}
+                    </p>
+                  </div>
+                ) : (
+                  availablePlanningSubjects.map((item) => {
+                    const isProfPromo =
+                      prof.responsiblePromo &&
+                      item.promos.includes(prof.responsiblePromo);
+                    return (
+                      <button
+                        key={item.name}
+                        type="button"
+                        onClick={() => addSubject(prof.id, item.name)}
+                        className={`group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all text-left shadow-sm active:scale-95 ${
+                          isProfPromo
+                            ? "bg-emerald-50 hover:bg-emerald-600 border-emerald-300 text-emerald-950 hover:text-white ring-1 ring-emerald-300/60"
+                            : "bg-white hover:bg-emerald-600 border-slate-200 hover:border-emerald-600 text-slate-700 hover:text-white"
+                        }`}
+                        title={`Cliquer pour ajouter "${item.name}" en 1 clic`}
+                      >
+                        <ICONS.Plus className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white transition-colors shrink-0" />
+                        <span className="font-bold">{item.name}</span>
+                        {item.promos.length > 0 && (
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 transition-colors ${
+                              isProfPromo
+                                ? "bg-emerald-200 text-emerald-900 group-hover:bg-emerald-500 group-hover:text-white"
+                                : "bg-slate-100 text-slate-600 group-hover:bg-emerald-500 group-hover:text-white"
+                            }`}
+                          >
+                            {item.promos.join(", ")}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* 2. Saisie manuelle ou avec autocomplétion datalist */}
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Saisie manuelle ou personnalisée
               </label>
 
-              {/* Input */}
               <div className="flex gap-2">
                 <input
                   type="text"
+                  list="planning-subjects-datalist"
                   value={newSubjectInput}
                   onChange={(e) => setNewSubjectInput(e.target.value)}
                   onKeyPress={(e) => {
@@ -1464,61 +2898,102 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                       handleAddSubject();
                     }
                   }}
-                  placeholder="Anatomie, Biologie, etc..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="Ex: Anatomie, ou choisir dans l'autocomplétion..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition-all"
                 />
+                <datalist id="planning-subjects-datalist">
+                  {planningSubjects.map((item) => (
+                    <option key={item.name} value={item.name}>
+                      {item.promos.length > 0
+                        ? `[${item.promos.join(", ")}]`
+                        : ""}
+                    </option>
+                  ))}
+                </datalist>
                 <button
                   onClick={handleAddSubject}
-                  className="bg-emerald-600 text-white px-4 py-2.5 rounded-lg text-sm font-black hover:bg-emerald-700 transition-all active:scale-95"
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all active:scale-95 shadow-sm flex items-center gap-1.5 shrink-0"
                 >
-                  + AJOUTER
+                  <ICONS.Plus className="w-3.5 h-3.5" />
+                  AJOUTER
                 </button>
               </div>
             </div>
 
-            {/* Liste des matières */}
+            {/* 3. Liste des matières configurées */}
             <div className="space-y-2">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Matières configurées ({prof.subjects.length})
-              </label>
-              <div className="max-h-52 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+              <div className="flex justify-between items-center">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Matières configurées ({prof.subjects.length})
+                </label>
+                {prof.subjects.length > 0 && (
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    Cliquer sur la corbeille pour retirer
+                  </span>
+                )}
+              </div>
+
+              <div className="max-h-48 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
                 {prof.subjects.length === 0 ? (
-                  <div className="text-center py-6 text-slate-300 italic text-xs">
-                    Aucune matière enregistrée
+                  <div className="text-center py-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-400 italic text-xs">
+                    Aucune matière enregistrée pour cet enseignant.
+                    <br />
+                    <span className="text-[11px] text-emerald-600 font-bold not-italic">
+                      ↑ Cliquez sur une matière détectée ci-dessus pour l'ajouter en 1 clic.
+                    </span>
                   </div>
                 ) : (
-                  prof.subjects.map((subject, idx) => (
-                    <div
-                      key={`${subject}-${idx}`}
-                      className="flex justify-between items-center p-3 rounded-lg border border-emerald-100 bg-emerald-50 group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-700">
-                          {subject}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => removeSubject(prof.id, subject)}
-                        className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors"
-                        title="Supprimer cette matière"
+                  prof.subjects.map((subject, idx) => {
+                    const inPlanning = planningSubjects.find(
+                      (ps) => ps.name.toLowerCase() === subject.toLowerCase(),
+                    );
+
+                    return (
+                      <div
+                        key={`${subject}-${idx}`}
+                        className="flex justify-between items-center px-3 py-2 rounded-lg border border-emerald-100 bg-emerald-50/60 hover:bg-emerald-50 group transition-all"
                       >
-                        <ICONS.Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <span className="text-xs font-bold text-emerald-950 truncate">
+                            {subject}
+                          </span>
+                          {inPlanning && inPlanning.promos.length > 0 && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-200/80 text-emerald-800 shrink-0">
+                              {inPlanning.promos.join(", ")}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeSubject(prof.id, subject)}
+                          className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1 rounded-md transition-all shrink-0 ml-2"
+                          title="Supprimer cette matière"
+                        >
+                          <ICONS.Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+            <span className="text-xs font-bold text-slate-500">
+              Total :{" "}
+              <span className="text-emerald-700 font-black">
+                {prof.subjects.length}
+              </span>{" "}
+              matière(s) associée(s)
+            </span>
             <button
               onClick={() => {
                 setEditingSubjectsId(null);
                 setNewSubjectInput("");
               }}
-              className="text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline"
+              className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider rounded-lg border border-slate-200 transition-all active:scale-95 shadow-sm"
             >
               Fermer
             </button>
@@ -1532,6 +3007,14 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
     <div className="space-y-6">
       {editingAbsenceId && <AbsenceModal />}
       {editingSubjectsId && <SubjectsModal />}
+      <BulkResidentAbsenceModal
+        isOpen={isBulkResidentAbsenceOpen}
+        onClose={() => setIsBulkResidentAbsenceOpen(false)}
+        residents={residents}
+        setResidents={setResidents}
+        exams={exams}
+        initialSelectedIds={bulkResidentInitialIds}
+      />
       <div className="flex border-b border-slate-200 gap-6">
         <button
           onClick={() => handleTabChange("profs")}
@@ -1583,16 +3066,34 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
           {(subTab === "profs" || subTab === "residents") && (
             <>
               {selectedIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleBulkDelete}
-                  className="flex items-center gap-1.5 p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200"
-                >
-                  <ICONS.Trash2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">
-                    Supprimer ({selectedIds.length})
-                  </span>
-                </button>
+                <>
+                  {subTab === "residents" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkResidentInitialIds([...selectedIds]);
+                        setIsBulkResidentAbsenceOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 p-2 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg text-sm font-medium transition-colors border border-amber-300 shadow-sm"
+                      title="Déclarer une absence pour les résidents sélectionnés"
+                    >
+                      <ICONS.Calendar className="w-4 h-4 text-amber-600" />
+                      <span className="hidden sm:inline">
+                        Absence groupée ({selectedIds.length})
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-1.5 p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200"
+                  >
+                    <ICONS.Trash2 className="w-4 h-4" />
+                    <span className="hidden sm:inline">
+                      Supprimer ({selectedIds.length})
+                    </span>
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -1946,7 +3447,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
                         <select
                           value={p.responsiblePromo || ""}
                           onChange={(e) => {
-                            const val = (e.target.value as Promo) || undefined;
+                            const val = (e.target.value as Promo) || null;
                             updateProf(p.id, "responsiblePromo", val);
                             if (val && p.roomAlternation === undefined) {
                               updateProf(p.id, "roomAlternation", true);
@@ -2135,6 +3636,19 @@ const ConfigTab: React.FC<ConfigTabProps> = ({
             </div>
 
             <div className="flex items-center gap-2.5 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkResidentInitialIds(selectedIds.length > 0 ? [...selectedIds] : []);
+                  setIsBulkResidentAbsenceOpen(true);
+                }}
+                className="flex items-center gap-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all active:scale-95 shrink-0"
+                title="Déclarer une indisponibilité groupée pour plusieurs résidents"
+              >
+                <ICONS.Calendar className="w-3.5 h-3.5" />
+                <span>+ Absence groupée</span>
+              </button>
+
               <select
                 value={residentSpecialtyFilter}
                 onChange={(e) => setResidentSpecialtyFilter(e.target.value)}

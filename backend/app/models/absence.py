@@ -25,8 +25,8 @@ class Absence(Base):
     )
 
     # Relations
-    professor = relationship("Professor", back_populates="absences")
-    resident = relationship("Resident", back_populates="absences")
+    professor = relationship("Professor", back_populates="absence_records")
+    resident = relationship("Resident", back_populates="absence_records")
 
     def __repr__(self):
         return f"<Absence {self.date}>"

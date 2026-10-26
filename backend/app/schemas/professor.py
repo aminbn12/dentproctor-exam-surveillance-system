@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 
 class ProfessorBase(BaseModel):
     name: str
@@ -9,6 +9,7 @@ class ProfessorBase(BaseModel):
     user_id: Optional[str] = None
     mandatory_promo_presence: Optional[bool] = True
     room_alternation: Optional[bool] = True
+    absences: Optional[List[Any]] = []
 
 class ProfessorCreate(ProfessorBase):
     id: Optional[str] = None  # Permettre de spécifier un ID personnalisé
@@ -20,6 +21,7 @@ class ProfessorUpdate(BaseModel):
     subjects: Optional[List[str]] = None
     mandatory_promo_presence: Optional[bool] = None
     room_alternation: Optional[bool] = None
+    absences: Optional[List[Any]] = None
 
 class ProfessorResponse(ProfessorBase):
     id: str

@@ -134,7 +134,9 @@ const HistoryTab: React.FC<HistoryTabProps> = ({ profs, residents, rooms }) => {
                 .trim();
               const rank = (p?.rank || "").toString().replace(/\.$/, "");
               const display = rank ? `${rank} ${cleanName}` : cleanName;
-              return `${display}${p?.responsiblePromo === exam.promo ? " (Resp)" : ""}`;
+              const promoDigit = (exam.promo || "").match(/\d+$/)?.[0] || (exam.promo || "").replace(/\D/g, "").slice(-1) || exam.promo || "";
+              const respTag = p?.responsiblePromo === exam.promo ? ` (Resp ${promoDigit})` : "";
+              return `${display}${respTag}`;
             })
             .join(", ") || "";
 
